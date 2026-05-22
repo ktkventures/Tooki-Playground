@@ -86,12 +86,16 @@
       margin-bottom: 8px;
     }
 
-    /* The small "Remove" button on each person's row. */
+    /* The small "x" button on each person's row that removes them. */
     .remove-button {
-      padding: 6px 12px;
+      /* A fixed width and height make it a small, even square. */
+      width: 24px;
+      height: 24px;
+      padding: 0;
       background-color: #b5544c;  /* muted red */
       color: white;
       font-size: 14px;
+      line-height: 1;             /* keeps the "x" centered vertically */
     }
 
     /* A friendly message shown when the list is empty. */
@@ -195,10 +199,13 @@
         const nameText = document.createElement("span");
         nameText.textContent = name;
 
-        // The "Remove" button for this specific person.
+        // The small "x" button that removes this specific person.
         const removeButton = document.createElement("button");
-        removeButton.textContent = "Remove";
+        removeButton.textContent = "x";
         removeButton.className = "remove-button";
+        // "title" is the little tooltip shown when you hover the button,
+        // so it's still clear that the "x" means remove.
+        removeButton.title = "Remove";
         // When this button is clicked, remove this person.
         removeButton.addEventListener("click", function () {
           removePerson(index);

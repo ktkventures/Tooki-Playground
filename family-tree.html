@@ -115,10 +115,31 @@
       pointer-events: none;
     }
 
-    /* A single relationship line. In SVG, "stroke" means the line colour. */
-    .relationship-line {
-      stroke: #9a8f80;   /* a soft brown-grey */
+    /*
+      The three kinds of relationship line. In SVG, "stroke" is the line
+      colour and "stroke-width" is its thickness.
+    */
+
+    /* Partner line — pink and dotted. */
+    .partner-line {
+      stroke: #d98ab0;
       stroke-width: 2;
+      stroke-dasharray: 2 5;   /* short marks with gaps... */
+      stroke-linecap: round;   /* ...rounded into dots */
+    }
+
+    /* Offspring (parent-to-child) line — green. */
+    .offspring-line {
+      stroke: #5a9e5a;
+      stroke-width: 2;
+      fill: none;              /* draw only the line, never fill a shape */
+    }
+
+    /* Manually-added sibling arch — soft grey. */
+    .sibling-line {
+      stroke: #9a8f80;
+      stroke-width: 2;
+      fill: none;
     }
 
     /*
@@ -502,44 +523,243 @@
       renderLines();
     }
 
-    // renderLines: draws a line for every relationship, connecting the
-    // centres of the two characters' boxes. Called whenever boxes move
-    // or relationships change.
+    // The web address ("namespace") that SVG shapes must be created with.
+    const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+    // svgLine: builds one straight SVG line from point 1 to point 2.
+    function svgLine(x1, y1, x2, y2, className) {
+      const line = document.createElementNS(SVG_NAMESPACE, "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("class", className);
+      return line;
+    }
+
+    // svgPolyline: builds an SVG shape that follows a series of points,
+    // drawing a straight segment from each point to the next. We use it
+    // for the square arches (up, across, then down).
+    function svgPolyline(points, className) {
+      const shape = document.createElementNS(SVG_NAMESPACE, "polyline");
+      // The "points" attribute is text like "10,20 10,5 60,5 60,20".
+      let pointsText = "";
+      points.forEach(function (point) {
+        pointsText += point[0] + "," + point[1] + " ";
+      });
+      shape.setAttribute("points", pointsText.trim());
+      shape.setAttribute("class", className);
+      return shape;
+    }
+
+    // coupleKey: turns two character IDs into one text label, smaller
+    // number first — e.g. IDs 5 and 2 both become "2-5". This gives a
+    // partnered couple a single, consistent name we can look things up by.
+    function coupleKey(id1, id2) {
+      const low  = Math.min(id1, id2);
+      const high = Math.max(id1, id2);
+      return low + "-" + high;
+    }
+
+    // boxGeometry: works out the key points of a character's box —
+    // its centre, and the middle of its top and bottom edges.
+    function boxGeometry(id) {
+      const character = findCharacter(id);
+      const box = boxElements[id];
+      if (!character || !box) {
+        return null;  // the box isn't on screen — caller should skip it
+      }
+      const width  = box.offsetWidth;
+      const height = box.offsetHeight;
+      return {
+        centerX: character.x + width / 2,
+        centerY: character.y + height / 2,
+        topX:    character.x + width / 2,
+        topY:    character.y,
+        bottomX: character.x + width / 2,
+        bottomY: character.y + height
+      };
+    }
+
+    // getParentChildLinks: collects every parent-to-child connection.
+    // A "parent" relationship reads from -> to; a "child" relationship
+    // reads to -> from. Either way, the result is { parentId, childId }.
+    function getParentChildLinks() {
+      const links = [];
+      relationships.forEach(function (rel) {
+        if (rel.type === "parent") {
+          links.push({ parentId: rel.fromId, childId: rel.toId });
+        } else if (rel.type === "child") {
+          links.push({ parentId: rel.toId, childId: rel.fromId });
+        }
+      });
+      return links;
+    }
+
+    // arePartners: true if these two characters are marked as partners.
+    function arePartners(id1, id2) {
+      return relationships.some(function (rel) {
+        return rel.type === "partner" &&
+          ((rel.fromId === id1 && rel.toId === id2) ||
+           (rel.fromId === id2 && rel.toId === id1));
+      });
+    }
+
+    // parentsOf: lists the unique IDs of a child's parents.
+    function parentsOf(childId, links) {
+      const parents = [];
+      links.forEach(function (link) {
+        if (link.childId === childId && parents.indexOf(link.parentId) === -1) {
+          parents.push(link.parentId);
+        }
+      });
+      return parents;
+    }
+
+    // renderLines: draws every relationship line. Called whenever boxes
+    // move or relationships change.
+    //
+    // It works in four stages, matching the four kinds of line:
+    //   1. Partner lines  — pink dotted, box centre to box centre
+    //   2 & 3. Offspring  — green, dropping from a couple's midpoint
+    //   4. Sibling arches — grey squared arch from box top to box top
     function renderLines() {
       lineLayer.innerHTML = "";  // clear the old lines first
 
-      relationships.forEach(function (rel) {
-        // Find the box element for each end of the relationship.
-        const fromBox = boxElements[rel.fromId];
-        const toBox   = boxElements[rel.toId];
-        if (!fromBox || !toBox) {
-          return;  // a box is missing — skip this line
-        }
+      const links = getParentChildLinks();
 
-        const fromCharacter = findCharacter(rel.fromId);
-        const toCharacter   = findCharacter(rel.toId);
-        if (!fromCharacter || !toCharacter) {
+      // ----- Stage 1: Partner lines -----
+      // While drawing them, remember each couple's midpoint (the spot
+      // halfway along the line) so offspring lines can start from there.
+      const coupleMidpoints = {};  // coupleKey -> { x, y }
+      relationships.forEach(function (rel) {
+        if (rel.type !== "partner") { return; }
+        const a = boxGeometry(rel.fromId);
+        const b = boxGeometry(rel.toId);
+        if (!a || !b) { return; }
+
+        lineLayer.appendChild(
+          svgLine(a.centerX, a.centerY, b.centerX, b.centerY, "partner-line")
+        );
+        coupleMidpoints[coupleKey(rel.fromId, rel.toId)] = {
+          x: (a.centerX + b.centerX) / 2,
+          y: (a.centerY + b.centerY) / 2
+        };
+      });
+
+      // ----- Stages 2 & 3: Offspring lines -----
+      // Sort every child into one of two groups:
+      //   coupleChildren — children whose two parents are a partnered
+      //                    couple (these get the fancy centred arch)
+      //   individualLinks — everyone else (these get a plain green line)
+      const coupleChildren  = {};  // coupleKey -> [childId, ...]
+      const individualLinks = [];  // [{ parentId, childId }, ...]
+
+      // Build the list of every child mentioned, with no duplicates.
+      const childIds = [];
+      links.forEach(function (link) {
+        if (childIds.indexOf(link.childId) === -1) {
+          childIds.push(link.childId);
+        }
+      });
+
+      childIds.forEach(function (childId) {
+        const parents = parentsOf(childId, links);
+        if (parents.length === 2 && arePartners(parents[0], parents[1])) {
+          // Two parents who are a couple — group this child under them.
+          const key = coupleKey(parents[0], parents[1]);
+          if (!coupleChildren[key]) { coupleChildren[key] = []; }
+          coupleChildren[key].push(childId);
+        } else {
+          // Fallback: a plain line from each parent to this child.
+          parents.forEach(function (parentId) {
+            individualLinks.push({ parentId: parentId, childId: childId });
+          });
+        }
+      });
+
+      // Draw each couple's offspring arch.
+      Object.keys(coupleChildren).forEach(function (key) {
+        const midpoint = coupleMidpoints[key];
+        if (!midpoint) { return; }  // couple's partner line isn't drawable
+        const kids = coupleChildren[key];
+
+        if (kids.length === 1) {
+          // One child: a single green line from the midpoint to its top.
+          const kid = boxGeometry(kids[0]);
+          if (!kid) { return; }
+          lineLayer.appendChild(
+            svgLine(midpoint.x, midpoint.y, kid.topX, kid.topY, "offspring-line")
+          );
           return;
         }
 
-        // The centre of a box is its top-left corner plus half its
-        // width (to go across) and half its height (to go down).
-        const x1 = fromCharacter.x + fromBox.offsetWidth  / 2;
-        const y1 = fromCharacter.y + fromBox.offsetHeight / 2;
-        const x2 = toCharacter.x   + toBox.offsetWidth    / 2;
-        const y2 = toCharacter.y   + toBox.offsetHeight   / 2;
+        // Several children: build the centred "square arch".
+        // First find how high to put the horizontal bar, and how far
+        // the farthest child sits from the couple's midpoint.
+        let highestTop  = Infinity;
+        let farthest    = 0;
+        kids.forEach(function (kidId) {
+          const kid = boxGeometry(kidId);
+          if (!kid) { return; }
+          if (kid.topY < highestTop) { highestTop = kid.topY; }
+          const distance = Math.abs(kid.topX - midpoint.x);
+          if (distance > farthest) { farthest = distance; }
+        });
+        if (highestTop === Infinity) { return; }  // no drawable children
 
-        // SVG elements must be created with a special web address
-        // (called a "namespace"), not the normal way other elements
-        // are made. document.createElementNS does exactly that.
-        const svgNamespace = "http://www.w3.org/2000/svg";
-        const line = document.createElementNS(svgNamespace, "line");
-        line.setAttribute("x1", x1);  // start point
-        line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2);  // end point
-        line.setAttribute("y2", y2);
-        line.setAttribute("class", "relationship-line");
-        lineLayer.appendChild(line);
+        // The bar sits a little above the highest child. It is centred
+        // on the couple's midpoint and reaches out equally on both
+        // sides — far enough to meet the farthest child.
+        const barY     = highestTop - 28;
+        const barLeft  = midpoint.x - farthest;
+        const barRight = midpoint.x + farthest;
+
+        // Green line dropping from the couple's midpoint down to the bar.
+        lineLayer.appendChild(
+          svgLine(midpoint.x, midpoint.y, midpoint.x, barY, "offspring-line")
+        );
+        // The horizontal bar.
+        lineLayer.appendChild(
+          svgLine(barLeft, barY, barRight, barY, "offspring-line")
+        );
+        // A short drop from the bar down to the top of each child.
+        kids.forEach(function (kidId) {
+          const kid = boxGeometry(kidId);
+          if (!kid) { return; }
+          lineLayer.appendChild(
+            svgLine(kid.topX, barY, kid.topX, kid.topY, "offspring-line")
+          );
+        });
+      });
+
+      // Plain green lines for children not under a partnered couple.
+      individualLinks.forEach(function (link) {
+        const parent = boxGeometry(link.parentId);
+        const child  = boxGeometry(link.childId);
+        if (!parent || !child) { return; }
+        lineLayer.appendChild(
+          svgLine(parent.bottomX, parent.bottomY, child.topX, child.topY,
+                  "offspring-line")
+        );
+      });
+
+      // ----- Stage 4: Sibling arches -----
+      // A squared arch: up from one box's top, across, down to the other.
+      relationships.forEach(function (rel) {
+        if (rel.type !== "sibling") { return; }
+        const a = boxGeometry(rel.fromId);
+        const b = boxGeometry(rel.toId);
+        if (!a || !b) { return; }
+
+        // The arch's flat top sits a little above the higher box.
+        const archY = Math.min(a.topY, b.topY) - 26;
+        lineLayer.appendChild(svgPolyline([
+          [a.topX, a.topY],   // start at box A's top
+          [a.topX, archY],    // straight up
+          [b.topX, archY],    // across
+          [b.topX, b.topY]    // straight down to box B's top
+        ], "sibling-line"));
       });
     }
 

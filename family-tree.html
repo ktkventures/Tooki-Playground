@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  family-tree.html — A family tree with draggable character boxes.
+  family-tree.html — Draggable character boxes connected by relationship lines.
 
   This is ONE file that contains three parts working together:
     1. HTML  — the structure of the page (the "bones")
@@ -99,6 +99,26 @@
       background-color: #fdfcfb;
       overflow: hidden;            /* hide anything dragged past the edges */
       margin-bottom: 16px;
+    }
+
+    /*
+      The line layer fills the whole tree area and holds the relationship
+      lines. "pointer-events: none" lets clicks and drags pass straight
+      through it to the boxes, so it never gets in the way of dragging.
+    */
+    #line-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* A single relationship line. In SVG, "stroke" means the line colour. */
+    .relationship-line {
+      stroke: #9a8f80;   /* a soft brown-grey */
+      stroke-width: 2;
     }
 
     /*
@@ -229,9 +249,12 @@
 
   <!--
     The tree area. Character boxes are placed inside here by JavaScript.
-    It starts empty.
+    The <svg> "line layer" holds the relationship lines, drawn underneath
+    the boxes. SVG is a kind of element built for drawing shapes and lines.
   -->
-  <div id="tree-area"></div>
+  <div id="tree-area">
+    <svg id="line-layer"></svg>
+  </div>
 
   <!-- ===== RELATIONSHIPS SECTION ===== -->
   <h2>Relationships</h2>
@@ -264,6 +287,7 @@
     const nameInput            = document.getElementById("name-input");
     const addButton            = document.getElementById("add-button");
     const treeArea             = document.getElementById("tree-area");
+    const lineLayer            = document.getElementById("line-layer");
 
     const characterASelect     = document.getElementById("character-a");
     const characterBSelect     = document.getElementById("character-b");
@@ -309,6 +333,10 @@
     // "editingId" remembers which character (by ID) is currently being
     // edited. It is null when nobody is being edited.
     let editingId = null;
+
+    // "boxElements" connects a character's ID to its box element on the
+    // page, so we can quickly find a box when drawing relationship lines.
+    let boxElements = {};
 
     // --- Step C: Functions (reusable instructions). ---
 
@@ -383,13 +411,20 @@
 
     // renderCharacters: redraws all the character boxes in the tree area.
     function renderCharacters() {
-      treeArea.innerHTML = "";  // empty it, then rebuild fresh
+      // Remove the old boxes (and any "empty" message), but leave the
+      // line layer in place so we don't have to rebuild it each time.
+      const oldItems = treeArea.querySelectorAll(".character-box, .empty-message");
+      oldItems.forEach(function (item) { item.remove(); });
+
+      // Start the ID-to-box lookup fresh; we fill it in as boxes are built.
+      boxElements = {};
 
       if (characters.length === 0) {
         const message = document.createElement("p");
         message.textContent = "No characters yet — add one above, then drag it around.";
         message.className = "empty-message";
         treeArea.appendChild(message);
+        renderLines();  // no boxes to connect — this just clears old lines
         return;
       }
 
@@ -458,6 +493,53 @@
         // Make this box draggable, then add it to the tree area.
         makeDraggable(box, character);
         treeArea.appendChild(box);
+
+        // Remember this box so we can find it when drawing lines.
+        boxElements[character.id] = box;
+      });
+
+      // Every box now exists and has a size, so we can draw the lines.
+      renderLines();
+    }
+
+    // renderLines: draws a line for every relationship, connecting the
+    // centres of the two characters' boxes. Called whenever boxes move
+    // or relationships change.
+    function renderLines() {
+      lineLayer.innerHTML = "";  // clear the old lines first
+
+      relationships.forEach(function (rel) {
+        // Find the box element for each end of the relationship.
+        const fromBox = boxElements[rel.fromId];
+        const toBox   = boxElements[rel.toId];
+        if (!fromBox || !toBox) {
+          return;  // a box is missing — skip this line
+        }
+
+        const fromCharacter = findCharacter(rel.fromId);
+        const toCharacter   = findCharacter(rel.toId);
+        if (!fromCharacter || !toCharacter) {
+          return;
+        }
+
+        // The centre of a box is its top-left corner plus half its
+        // width (to go across) and half its height (to go down).
+        const x1 = fromCharacter.x + fromBox.offsetWidth  / 2;
+        const y1 = fromCharacter.y + fromBox.offsetHeight / 2;
+        const x2 = toCharacter.x   + toBox.offsetWidth    / 2;
+        const y2 = toCharacter.y   + toBox.offsetHeight   / 2;
+
+        // SVG elements must be created with a special web address
+        // (called a "namespace"), not the normal way other elements
+        // are made. document.createElementNS does exactly that.
+        const svgNamespace = "http://www.w3.org/2000/svg";
+        const line = document.createElementNS(svgNamespace, "line");
+        line.setAttribute("x1", x1);  // start point
+        line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2);  // end point
+        line.setAttribute("y2", y2);
+        line.setAttribute("class", "relationship-line");
+        lineLayer.appendChild(line);
       });
     }
 
@@ -509,6 +591,9 @@
           character.y = newY;
           box.style.left = newX + "px";
           box.style.top  = newY + "px";
+
+          // Redraw the lines so they follow the box as it moves.
+          renderLines();
         }
 
         // onUp runs once when you let go.
@@ -710,6 +795,7 @@
 
       saveRelationships();
       renderRelationships();
+      renderLines();  // draw the new connecting line
     }
 
     // removeRelationship: deletes one relationship by its ID.
@@ -719,6 +805,7 @@
       });
       saveRelationships();
       renderRelationships();
+      renderLines();  // remove the line that went with it
     }
 
     // --- Step D: Connect actions to the buttons. ---

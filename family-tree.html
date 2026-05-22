@@ -100,7 +100,7 @@
       border: 2px dashed #c9c4bd;
       border-radius: 8px;
       overflow: auto;
-      margin-bottom: 16px;
+      margin-bottom: 0;
     }
 
     /*
@@ -148,6 +148,84 @@
     }
     .toolbar-button:hover {
       background-color: #e3ded6;
+    }
+
+    /* The editable tree title, floating over the top-left of the canvas. */
+    #tree-title {
+      position: absolute;
+      left: 56px;          /* just to the right of the toolbar */
+      top: 8px;
+      z-index: 5;
+      width: 320px;
+      max-width: calc(100% - 80px);
+      padding: 6px 10px;
+      font-size: 22px;     /* bigger than the character boxes */
+      font-weight: bold;
+      color: #2b2b2b;
+      background-color: rgba(255, 255, 255, 0.85);
+      border: 1px solid transparent;
+      border-radius: 8px;
+    }
+    #tree-title:hover {
+      border-color: #d8d3cb;
+    }
+    #tree-title:focus {
+      outline: none;
+      border-color: #5b8a72;
+      background-color: white;
+    }
+
+    /* The row of tree tabs along the bottom of the canvas. */
+    #tree-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+      margin-bottom: 16px;
+    }
+
+    /* A single tree tab. */
+    .tree-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background-color: #ece8e2;
+      border: 1px solid #d8d3cb;
+      border-radius: 0 0 8px 8px;   /* rounded bottom — a hanging tab */
+      cursor: pointer;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    /* The tab of the tree currently on screen. */
+    .tree-tab.active {
+      background-color: white;
+      font-weight: bold;
+    }
+
+    /* The small "x" that deletes a tree. */
+    .tab-close {
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      background-color: #c9c2b8;
+      color: white;
+      font-size: 12px;
+      line-height: 1;
+      border-radius: 50%;
+    }
+    .tab-close:hover {
+      background-color: #b5544c;
+    }
+
+    /* The "+" button that creates a new tree. */
+    #new-tab-button {
+      width: 30px;
+      padding: 6px 0;
+      background-color: #5b8a72;
+      color: white;
+      font-size: 16px;
     }
 
     /* While connecting, show a cross-hair so it's clear you're aiming. */
@@ -393,11 +471,18 @@
         </svg>
       </button>
     </div>
+
+    <!-- An editable title for this family tree, shown over the canvas. -->
+    <input type="text" id="tree-title" placeholder="Untitled family tree">
+
     <div id="tree-area">
       <div id="tree-canvas">
         <svg id="line-layer"></svg>
       </div>
     </div>
+
+    <!-- One tab per tree, plus a "+" button to create a new tree. -->
+    <div id="tree-tabs"></div>
   </div>
 
   <!-- The relationship-type pop-up menu. JavaScript fills and positions it. -->
@@ -420,11 +505,17 @@
     const typeMenu   = document.getElementById("type-menu");
     const zoomInBtn  = document.getElementById("zoom-in");
     const zoomOutBtn = document.getElementById("zoom-out");
+    const treeTitleInput = document.getElementById("tree-title");
+    const treeTabs = document.getElementById("tree-tabs");
 
     // The "drawers" in the browser's storage where we keep each kind of data.
     const CHARACTERS_KEY    = "familyTreeCharacters";
     const RELATIONSHIPS_KEY = "familyTreeRelationships";
     const ZOOM_KEY          = "familyTreeZoom";
+    const TITLE_KEY         = "familyTreeTitle";
+
+    // The single storage drawer that holds the whole app (every tree).
+    const APP_KEY = "familyTreeApp";
 
     // The web address ("namespace") that SVG shapes must be created with.
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -441,15 +532,20 @@
     ];
 
     // --- Step B: Our data. ---
-    // "characters" — each one is a bundle: { id, name, x, y }.
-    let characters = loadCharacters();
+    // The app holds many trees. "trees" is the list of them; each tree
+    // is a bundle: { id, name, title, characters, relationships, zoom }.
+    // "currentTreeId" is the id of the tree currently on screen.
+    const appState = loadApp();
+    let trees = appState.trees;
+    let currentTreeId = appState.currentTreeId;
 
-    // "relationships" — each one is a bundle: { id, fromId, toId, type }.
-    // type is "parent", "child", or "partner".
-    let relationships = loadRelationships();
-
-    // "nextId" — the next unused ID number for a new character/relationship.
-    let nextId = computeNextId();
+    // The WORKING COPY of the tree on screen. These point at the current
+    // tree's data; switching trees swaps them, and persist() copies them
+    // back into the tree before saving.
+    let characters = [];
+    let relationships = [];
+    let zoom = 1;
+    let nextId = 1;
 
     // "editingId" — the ID of the character whose name is being edited.
     let editingId = null;
@@ -457,12 +553,8 @@
     // "boxElements" — connects a character's ID to its box on the page.
     let boxElements = {};
 
-    // "zoom" — how big the canvas is shown (1 = normal, 2 = twice as big).
-    let zoom = loadZoom();
-
     // "connecting" — while you are drawing a new relationship line, this
-    // holds { fromId, type, originX, originY }. It is null the rest of
-    // the time.
+    // holds { fromId, type }. It is null the rest of the time.
     let connecting = null;
 
     // "tempLine" — the SVG line that follows the cursor while connecting.
@@ -499,42 +591,210 @@
       });
     }
 
-    // loadCharacters / loadRelationships: read saved data out of storage.
-    function loadCharacters() {
-      const savedText = localStorage.getItem(CHARACTERS_KEY);
-      return savedText ? JSON.parse(savedText) : [];
-    }
-    function loadRelationships() {
-      const savedText = localStorage.getItem(RELATIONSHIPS_KEY);
-      return savedText ? JSON.parse(savedText) : [];
+    // ----- Saving and loading the whole app -----
+
+    // loadApp: reads every tree out of storage. The first time this
+    // multi-tree version runs, it carries over a tree saved by the older
+    // single-tree version, so an existing tree is not lost.
+    function loadApp() {
+      const savedText = localStorage.getItem(APP_KEY);
+      if (savedText) {
+        return JSON.parse(savedText);
+      }
+      const oldCharacters    = localStorage.getItem(CHARACTERS_KEY);
+      const oldRelationships = localStorage.getItem(RELATIONSHIPS_KEY);
+      const oldZoom          = localStorage.getItem(ZOOM_KEY);
+      const firstTree = {
+        id: 1,
+        name: "Tree 1",
+        title: localStorage.getItem(TITLE_KEY) || "",
+        characters:    oldCharacters    ? JSON.parse(oldCharacters)    : [],
+        relationships: oldRelationships ? JSON.parse(oldRelationships) : [],
+        zoom:          oldZoom          ? Number(oldZoom)              : 1
+      };
+      return { trees: [firstTree], currentTreeId: 1 };
     }
 
-    // saveCharacters / saveRelationships: write data into storage as text.
-    function saveCharacters() {
-      localStorage.setItem(CHARACTERS_KEY, JSON.stringify(characters));
+    // currentTree: the tree object currently shown on screen.
+    function currentTree() {
+      return trees.find(function (tree) {
+        return tree.id === currentTreeId;
+      });
     }
-    function saveRelationships() {
-      localStorage.setItem(RELATIONSHIPS_KEY, JSON.stringify(relationships));
+
+    // loadWorkingCopy: points the working variables at the current
+    // tree's data, ready to be drawn and edited.
+    function loadWorkingCopy() {
+      const tree = currentTree();
+      characters    = tree.characters;
+      relationships = tree.relationships;
+      zoom          = tree.zoom;
+      treeTitleInput.value = tree.title;
+      nextId    = computeNextId();
+      editingId = null;
+    }
+
+    // persist: copies the working state back into the current tree, then
+    // writes every tree to storage as text. ALL saving goes through here.
+    function persist() {
+      const tree = currentTree();
+      if (tree) {
+        tree.characters    = characters;
+        tree.relationships = relationships;
+        tree.zoom          = zoom;
+        tree.title         = treeTitleInput.value;
+      }
+      localStorage.setItem(APP_KEY, JSON.stringify({
+        trees: trees,
+        currentTreeId: currentTreeId
+      }));
+    }
+
+    // These are named save points used around the code. They all now
+    // save the whole app through persist().
+    function saveCharacters()    { persist(); }
+    function saveRelationships() { persist(); }
+
+    // makeTreeId: the next unused ID number for a new tree.
+    function makeTreeId() {
+      let highest = 0;
+      trees.forEach(function (tree) {
+        if (tree.id > highest) { highest = tree.id; }
+      });
+      return highest + 1;
+    }
+
+    // ----- Switching, creating, deleting, and renaming trees -----
+
+    // refreshEverything: redraws the whole screen after the shown tree
+    // has changed.
+    function refreshEverything() {
+      cancelConnecting();
+      closeTypeMenu();
+      renderTabs();
+      renderCharacters();
+      applyZoom();
+      treeArea.scrollLeft = 0;
+      treeArea.scrollTop  = 0;
+    }
+
+    // switchToTree: shows a different tree.
+    function switchToTree(id) {
+      if (id === currentTreeId) { return; }
+      persist();            // save the tree we are leaving
+      currentTreeId = id;
+      loadWorkingCopy();    // load the tree we are entering
+      persist();
+      refreshEverything();
+    }
+
+    // createTree: makes a fresh, empty tree and switches to it.
+    function createTree() {
+      persist();
+      const newTree = {
+        id: makeTreeId(),
+        name: "Tree " + (trees.length + 1),
+        title: "",
+        characters: [],
+        relationships: [],
+        zoom: 1
+      };
+      trees.push(newTree);
+      currentTreeId = newTree.id;
+      loadWorkingCopy();
+      persist();
+      refreshEverything();
+    }
+
+    // deleteTree: removes a tree — but never the last remaining one.
+    function deleteTree(id) {
+      if (trees.length <= 1) { return; }
+      if (!confirm("Delete this tree? This cannot be undone.")) { return; }
+      trees = trees.filter(function (tree) { return tree.id !== id; });
+      if (currentTreeId === id) {
+        currentTreeId = trees[0].id;
+        loadWorkingCopy();
+      }
+      persist();
+      refreshEverything();
+    }
+
+    // renameTree: asks for a new name for a tree's tab.
+    function renameTree(id) {
+      const tree = trees.find(function (t) { return t.id === id; });
+      if (!tree) { return; }
+      const answer = prompt("Rename this tree:", tree.name);
+      if (answer === null) { return; }   // the user cancelled
+      const trimmed = answer.trim();
+      if (trimmed !== "") {
+        tree.name = trimmed;
+        persist();
+        renderTabs();
+      }
+    }
+
+    // renderTabs: draws the row of tabs at the bottom of the canvas.
+    function renderTabs() {
+      treeTabs.innerHTML = "";
+
+      trees.forEach(function (tree) {
+        const tab = document.createElement("div");
+        tab.className = "tree-tab";
+        if (tree.id === currentTreeId) {
+          tab.classList.add("active");
+        }
+
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = tree.name;
+        tab.appendChild(nameSpan);
+
+        // The "x" only appears when there is more than one tree, because
+        // the last remaining tree cannot be deleted.
+        if (trees.length > 1) {
+          const closeButton = document.createElement("button");
+          closeButton.className = "tab-close";
+          closeButton.textContent = "x";
+          closeButton.title = "Delete this tree";
+          closeButton.addEventListener("click", function (event) {
+            event.stopPropagation();   // don't also switch to this tab
+            deleteTree(tree.id);
+          });
+          tab.appendChild(closeButton);
+        }
+
+        // Click a tab to switch to it; double-click to rename it.
+        tab.addEventListener("click", function () {
+          switchToTree(tree.id);
+        });
+        tab.addEventListener("dblclick", function () {
+          renameTree(tree.id);
+        });
+
+        treeTabs.appendChild(tab);
+      });
+
+      // The "+" button that makes a new tree.
+      const addButton = document.createElement("button");
+      addButton.id = "new-tab-button";
+      addButton.textContent = "+";
+      addButton.title = "New tree";
+      addButton.addEventListener("click", createTree);
+      treeTabs.appendChild(addButton);
     }
 
     // nextStartingSpot: a default x/y for a brand-new character box,
     // nudged a little each time so new boxes don't land in an exact stack.
     function nextStartingSpot() {
-      // Start clear of the toolbar in the top-left corner.
+      // Start clear of the toolbar and title in the top-left corner.
       const step = 26;
       const slot = characters.length % 6;
-      return { x: 70 + slot * step, y: 20 + slot * step };
+      return { x: 70 + slot * step, y: 60 + slot * step };
     }
 
-    // loadZoom / saveZoom: the zoom level is remembered between visits.
-    function loadZoom() {
-      const saved = localStorage.getItem(ZOOM_KEY);
-      const value = Number(saved);
-      return (saved && !isNaN(value)) ? value : 1;
-    }
-    function saveZoom() {
-      localStorage.setItem(ZOOM_KEY, String(zoom));
-    }
+    // saveZoom / saveTitle: more named save points; like the others
+    // they save the whole app through persist().
+    function saveZoom()  { persist(); }
+    function saveTitle() { persist(); }
 
     // svgLine: builds one straight SVG line from point 1 to point 2.
     function svgLine(x1, y1, x2, y2, className) {
@@ -1212,6 +1472,9 @@
     zoomInBtn.addEventListener("click", zoomIn);
     zoomOutBtn.addEventListener("click", zoomOut);
 
+    // Save the tree title as it is typed.
+    treeTitleInput.addEventListener("input", saveTitle);
+
     // When the browser window changes size, keep the canvas at least
     // as big as the tree area.
     window.addEventListener("resize", function () {
@@ -1219,7 +1482,9 @@
     });
 
     // --- Step J: Draw everything once when the page first opens. ---
+    loadWorkingCopy();
     buildTypeMenu();
+    renderTabs();
     renderCharacters();
     applyZoom();
   </script>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## About this repository
 
-Tami-Playground is a personal learning playground for Tami, who is new to
+Tooki-Playground is a personal learning playground for Tami, who is new to
 coding ("vibe coding"). It currently contains no application code, build
 system, or tests — projects will be added over time. Treat each new project
 as a fresh start unless told otherwise.

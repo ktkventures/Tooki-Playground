@@ -111,9 +111,43 @@
     */
     #tree-canvas {
       position: relative;
-      min-width: 100%;
-      min-height: 100%;
+      transform-origin: 0 0;   /* zoom grows from the top-left corner */
       background-color: #fdfcfb;
+    }
+
+    /* Wraps the tree area so the toolbar can float on top without scrolling. */
+    #tree-wrap {
+      position: relative;
+    }
+
+    /* The toolbar — a floating column of buttons on the tree area's left. */
+    #tree-toolbar {
+      position: absolute;
+      left: 8px;
+      top: 8px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 4px;
+      background-color: white;
+      border: 1px solid #c9c4bd;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+
+    /* A single toolbar button. */
+    .toolbar-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      background-color: #f0ede8;
+    }
+    .toolbar-button:hover {
+      background-color: #e3ded6;
     }
 
     /* While connecting, show a cross-hair so it's clear you're aiming. */
@@ -333,11 +367,36 @@
   <!--
     The tree area is the on-screen "viewport" — a fixed window sized to
     the browser. Inside it sits the canvas, which can be larger; when it
-    is, the tree area shows scrollbars so you can pan around.
+    is, the tree area shows scrollbars so you can pan around. The toolbar
+    floats on top in the corner and does not scroll with the canvas.
   -->
-  <div id="tree-area">
-    <div id="tree-canvas">
-      <svg id="line-layer"></svg>
+  <div id="tree-wrap">
+    <div id="tree-toolbar">
+      <!--
+        Each button holds a small magnifying-glass icon drawn with SVG
+        shapes: a circle (the lens), a line (the handle), and a "+" or
+        "-" inside the lens.
+      -->
+      <button id="zoom-in" class="toolbar-button" title="Zoom in">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+          <circle cx="8" cy="8" r="6" fill="none" stroke="#2b2b2b" stroke-width="2"/>
+          <line x1="12.5" y1="12.5" x2="18" y2="18" stroke="#2b2b2b" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="5" y1="8" x2="11" y2="8" stroke="#2b2b2b" stroke-width="2" stroke-linecap="round"/>
+          <line x1="8" y1="5" x2="8" y2="11" stroke="#2b2b2b" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="zoom-out" class="toolbar-button" title="Zoom out">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+          <circle cx="8" cy="8" r="6" fill="none" stroke="#2b2b2b" stroke-width="2"/>
+          <line x1="12.5" y1="12.5" x2="18" y2="18" stroke="#2b2b2b" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="5" y1="8" x2="11" y2="8" stroke="#2b2b2b" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <div id="tree-area">
+      <div id="tree-canvas">
+        <svg id="line-layer"></svg>
+      </div>
     </div>
   </div>
 
@@ -355,14 +414,17 @@
     // --- Step A: Find the parts of the page we need to work with. ---
     const nameInput = document.getElementById("name-input");
     const addButton = document.getElementById("add-button");
-    const treeArea  = document.getElementById("tree-area");
-    const canvas    = document.getElementById("tree-canvas");
-    const lineLayer = document.getElementById("line-layer");
-    const typeMenu  = document.getElementById("type-menu");
+    const treeArea   = document.getElementById("tree-area");
+    const canvas     = document.getElementById("tree-canvas");
+    const lineLayer  = document.getElementById("line-layer");
+    const typeMenu   = document.getElementById("type-menu");
+    const zoomInBtn  = document.getElementById("zoom-in");
+    const zoomOutBtn = document.getElementById("zoom-out");
 
     // The "drawers" in the browser's storage where we keep each kind of data.
     const CHARACTERS_KEY    = "familyTreeCharacters";
     const RELATIONSHIPS_KEY = "familyTreeRelationships";
+    const ZOOM_KEY          = "familyTreeZoom";
 
     // The web address ("namespace") that SVG shapes must be created with.
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -394,6 +456,9 @@
 
     // "boxElements" — connects a character's ID to its box on the page.
     let boxElements = {};
+
+    // "zoom" — how big the canvas is shown (1 = normal, 2 = twice as big).
+    let zoom = loadZoom();
 
     // "connecting" — while you are drawing a new relationship line, this
     // holds { fromId, type, originX, originY }. It is null the rest of
@@ -455,9 +520,20 @@
     // nextStartingSpot: a default x/y for a brand-new character box,
     // nudged a little each time so new boxes don't land in an exact stack.
     function nextStartingSpot() {
+      // Start clear of the toolbar in the top-left corner.
       const step = 26;
       const slot = characters.length % 6;
-      return { x: 20 + slot * step, y: 20 + slot * step };
+      return { x: 70 + slot * step, y: 20 + slot * step };
+    }
+
+    // loadZoom / saveZoom: the zoom level is remembered between visits.
+    function loadZoom() {
+      const saved = localStorage.getItem(ZOOM_KEY);
+      const value = Number(saved);
+      return (saved && !isNaN(value)) ? value : 1;
+    }
+    function saveZoom() {
+      localStorage.setItem(ZOOM_KEY, String(zoom));
     }
 
     // svgLine: builds one straight SVG line from point 1 to point 2.
@@ -534,8 +610,34 @@
         if (bottom > tallest) { tallest = bottom; }
       });
       const margin = 60;  // breathing room past the furthest box
-      canvas.style.width  = Math.max(treeArea.clientWidth,  widest  + margin) + "px";
-      canvas.style.height = Math.max(treeArea.clientHeight, tallest + margin) + "px";
+      // Divide the viewport size by the zoom: after the canvas is scaled
+      // up by "zoom", this keeps it at least filling the visible area.
+      canvas.style.width  =
+        Math.max(treeArea.clientWidth  / zoom, widest  + margin) + "px";
+      canvas.style.height =
+        Math.max(treeArea.clientHeight / zoom, tallest + margin) + "px";
+    }
+
+    // applyZoom: shows the canvas at the current zoom level.
+    function applyZoom() {
+      // "transform: scale" makes everything on the canvas — boxes and
+      // lines together — look bigger or smaller, without changing any of
+      // the numbers we store. The corner stays anchored (see the CSS
+      // "transform-origin"), so zoom grows from the top-left.
+      canvas.style.transform = "scale(" + zoom + ")";
+      resizeCanvas();
+    }
+
+    // zoomIn / zoomOut: step the zoom level up or down, within limits.
+    function zoomIn() {
+      zoom = Math.min(zoom * 1.2, 2.5);   // never more than 2.5x
+      saveZoom();
+      applyZoom();
+    }
+    function zoomOut() {
+      zoom = Math.max(zoom / 1.2, 0.4);   // never less than 0.4x
+      saveZoom();
+      applyZoom();
     }
 
     // --- Step D: Drawing the character boxes. ---
@@ -666,15 +768,16 @@
         box.classList.add("dragging");
 
         const canvasRect = canvas.getBoundingClientRect();
-        const grabOffsetX = (event.clientX - canvasRect.left) - character.x;
-        const grabOffsetY = (event.clientY - canvasRect.top)  - character.y;
+        // Divide by "zoom" to turn on-screen pixels into canvas units.
+        const grabOffsetX = (event.clientX - canvasRect.left) / zoom - character.x;
+        const grabOffsetY = (event.clientY - canvasRect.top)  / zoom - character.y;
 
         function onMove(moveEvent) {
           // The box can move anywhere from the top-left corner onward.
           // We only stop it at 0 (the corner); the canvas itself grows
           // to fit, and scrollbars appear, so there is no far edge.
-          let newX = (moveEvent.clientX - canvasRect.left) - grabOffsetX;
-          let newY = (moveEvent.clientY - canvasRect.top)  - grabOffsetY;
+          let newX = (moveEvent.clientX - canvasRect.left) / zoom - grabOffsetX;
+          let newY = (moveEvent.clientY - canvasRect.top)  / zoom - grabOffsetY;
           newX = Math.max(0, newX);
           newY = Math.max(0, newY);
 
@@ -1039,8 +1142,8 @@
     treeArea.addEventListener("pointermove", function (event) {
       if (!connecting || !tempLine) { return; }
       const canvasRect = canvas.getBoundingClientRect();
-      tempLine.setAttribute("x2", event.clientX - canvasRect.left);
-      tempLine.setAttribute("y2", event.clientY - canvasRect.top);
+      tempLine.setAttribute("x2", (event.clientX - canvasRect.left) / zoom);
+      tempLine.setAttribute("y2", (event.clientY - canvasRect.top)  / zoom);
     });
 
     // Pressing empty space in the tree area cancels a connection.
@@ -1065,6 +1168,10 @@
       }
     });
 
+    // The toolbar's zoom buttons.
+    zoomInBtn.addEventListener("click", zoomIn);
+    zoomOutBtn.addEventListener("click", zoomOut);
+
     // When the browser window changes size, keep the canvas at least
     // as big as the tree area.
     window.addEventListener("resize", function () {
@@ -1074,6 +1181,7 @@
     // --- Step J: Draw everything once when the page first opens. ---
     buildTypeMenu();
     renderCharacters();
+    applyZoom();
   </script>
 
 </body>

@@ -33,6 +33,9 @@ as a fresh start unless told otherwise.
 - Never generate art, illustrations, or pictures — including image files,
   drawn graphics, SVG artwork, ASCII art, or generated/AI imagery. This
   applies regardless of how the request is phrased.
+- Exception: basic clipart-style symbols that are widely free to use
+  (simple functional icons such as a magnifying glass, gear, or arrow)
+  are acceptable.
 
 ## Git
 

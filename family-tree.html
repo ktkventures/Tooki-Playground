@@ -618,6 +618,49 @@
         Math.max(treeArea.clientHeight / zoom, tallest + margin) + "px";
     }
 
+    // applyBoxPositions: places every box at its character's x/y. Used
+    // after an expansion has shifted all the boxes at once.
+    function applyBoxPositions() {
+      characters.forEach(function (character) {
+        const box = boxElements[character.id];
+        if (box) {
+          box.style.left = character.x + "px";
+          box.style.top  = character.y + "px";
+        }
+      });
+    }
+
+    // expandCanvasIfNeeded: if a box has been moved past the top or left
+    // edge, the whole tree is nudged back so the smallest x and y are a
+    // small margin again — making room on that side. The viewport is
+    // scrolled by the same amount, so nothing appears to jump; the tree
+    // simply gains space to the left or top.
+    function expandCanvasIfNeeded() {
+      const margin = 20;
+      let minX = Infinity;
+      let minY = Infinity;
+      characters.forEach(function (character) {
+        if (character.x < minX) { minX = character.x; }
+        if (character.y < minY) { minY = character.y; }
+      });
+
+      const shiftX = (minX < margin) ? margin - minX : 0;
+      const shiftY = (minY < margin) ? margin - minY : 0;
+      if (shiftX === 0 && shiftY === 0) { return; }
+
+      // Nudge every box back into positive space.
+      characters.forEach(function (character) {
+        character.x += shiftX;
+        character.y += shiftY;
+      });
+
+      resizeCanvas();  // make the canvas bigger before we scroll
+      // Scroll by the same distance (in screen pixels) so the move is
+      // invisible to the eye.
+      treeArea.scrollLeft += shiftX * zoom;
+      treeArea.scrollTop  += shiftY * zoom;
+    }
+
     // applyZoom: shows the canvas at the current zoom level.
     function applyZoom() {
       // "transform: scale" makes everything on the canvas — boxes and
@@ -773,21 +816,18 @@
         const grabOffsetY = (event.clientY - canvasRect.top)  / zoom - character.y;
 
         function onMove(moveEvent) {
-          // The box can move anywhere from the top-left corner onward.
-          // We only stop it at 0 (the corner); the canvas itself grows
-          // to fit, and scrollbars appear, so there is no far edge.
-          let newX = (moveEvent.clientX - canvasRect.left) / zoom - grabOffsetX;
-          let newY = (moveEvent.clientY - canvasRect.top)  / zoom - grabOffsetY;
-          newX = Math.max(0, newX);
-          newY = Math.max(0, newY);
+          // Recompute the canvas position every move — it can shift when
+          // the canvas grows to the left and we scroll to keep up.
+          const rect = canvas.getBoundingClientRect();
+          character.x = (moveEvent.clientX - rect.left) / zoom - grabOffsetX;
+          character.y = (moveEvent.clientY - rect.top)  / zoom - grabOffsetY;
 
-          character.x = newX;
-          character.y = newY;
-          box.style.left = newX + "px";
-          box.style.top  = newY + "px";
-
-          resizeCanvas();  // grow the canvas if the box moved past its edge
-          renderLines();   // lines follow the box as it moves
+          // Pulled past the top/left edge? Grow the canvas that way.
+          // resizeCanvas handles growing to the right and bottom.
+          expandCanvasIfNeeded();
+          resizeCanvas();
+          applyBoxPositions();  // a left/top expansion moves every box
+          renderLines();        // lines follow the boxes
         }
 
         function onUp() {

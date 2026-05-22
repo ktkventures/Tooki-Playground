@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  family-tree.html — Step 2: People, editing, and relationships.
+  family-tree.html — Step 2: Characters, editing, and relationships.
 
   This is ONE file that contains three parts working together:
     1. HTML  — the structure of the page (the "bones")
@@ -37,7 +37,7 @@
       text-align: center;
     }
 
-    /* Section headings ("People", "Relationships"). */
+    /* Section headings ("Characters", "Relationships"). */
     h2 {
       margin-top: 32px;
       border-bottom: 2px solid #e0dcd5;  /* a thin underline to separate sections */
@@ -92,7 +92,7 @@
       padding: 0;
     }
 
-    /* Each person or relationship sits in its own "li" (list item) row. */
+    /* Each character or relationship sits in its own "li" (list item) row. */
     li {
       display: flex;
       justify-content: space-between;  /* text on the left, buttons on the right */
@@ -111,7 +111,7 @@
       gap: 6px;
     }
 
-    /* The "Edit" button on each person's row. */
+    /* The "Edit" button on each character's row. */
     .edit-button {
       padding: 6px 12px;
       background-color: #4a6d8c;  /* calm blue */
@@ -136,7 +136,7 @@
       border-radius: 6px;
     }
 
-    /* The small "x" button that removes a person or relationship. */
+    /* The small "x" button that removes a character or relationship. */
     .remove-button {
       /* A fixed width and height make it a small, even square. */
       width: 24px;
@@ -165,8 +165,8 @@
 
   <h1>Family Tree Creator</h1>
 
-  <!-- ===== PEOPLE SECTION ===== -->
-  <h2>People</h2>
+  <!-- ===== CHARACTERS SECTION ===== -->
+  <h2>Characters</h2>
 
   <!-- The row with the text box and the Add button. -->
   <div class="add-row">
@@ -178,21 +178,21 @@
     <button id="add-button" class="add-button">Add</button>
   </div>
 
-  <!-- This list is where each person appears. JavaScript fills it in. -->
-  <ul id="people-list"></ul>
+  <!-- This list is where each character appears. JavaScript fills it in. -->
+  <ul id="character-list"></ul>
 
   <!-- ===== RELATIONSHIPS SECTION ===== -->
   <h2>Relationships</h2>
 
   <!--
-    The row for adding a relationship: two person dropdowns with a
+    The row for adding a relationship: two character dropdowns with a
     relationship-type dropdown in the middle. JavaScript fills the
-    dropdowns with your people and the relationship choices.
+    dropdowns with your characters and the relationship choices.
   -->
   <div class="add-row">
-    <select id="person-a"></select>
+    <select id="character-a"></select>
     <select id="relationship-type"></select>
-    <select id="person-b"></select>
+    <select id="character-b"></select>
     <button id="add-relationship-button" class="add-button">Add</button>
   </div>
 
@@ -211,16 +211,16 @@
     // document.getElementById finds an element by the "id" we gave it.
     const nameInput            = document.getElementById("name-input");
     const addButton            = document.getElementById("add-button");
-    const peopleList           = document.getElementById("people-list");
+    const characterList        = document.getElementById("character-list");
 
-    const personASelect        = document.getElementById("person-a");
-    const personBSelect        = document.getElementById("person-b");
+    const characterASelect     = document.getElementById("character-a");
+    const characterBSelect     = document.getElementById("character-b");
     const typeSelect           = document.getElementById("relationship-type");
     const addRelationshipBtn   = document.getElementById("add-relationship-button");
     const relationshipsList    = document.getElementById("relationships-list");
 
     // The "drawers" in the browser's storage where we keep each kind of data.
-    const PEOPLE_KEY        = "familyTreePeople";
+    const CHARACTERS_KEY    = "familyTreeCharacters";
     const RELATIONSHIPS_KEY = "familyTreeRelationships";
 
     // The kinds of relationship you can pick. Each one has:
@@ -236,22 +236,24 @@
     ];
 
     // --- Step B: Our data. ---
-    // "people" is a list where each person is a small bundle: { id, name }.
-    // The "id" is a permanent, unique number — like a membership number.
-    // It never changes, even if the name does. Relationships point at IDs.
-    let people = loadPeople();
+    // "characters" is a list where each character is a small bundle:
+    // { id, name }. The "id" is a permanent, unique number — like a
+    // membership number. It never changes, even if the name does.
+    // Relationships point at IDs.
+    let characters = loadCharacters();
 
     // "relationships" is a list where each connection is a bundle:
     //   { id, fromId, toId, type }
-    // fromId and toId are the IDs of the two people being connected.
+    // fromId and toId are the IDs of the two characters being connected.
     let relationships = loadRelationships();
 
-    // "nextId" is the next unused number. Every new person or relationship
-    // takes this number, then we add 1 so the next one is different.
+    // "nextId" is the next unused number. Every new character or
+    // relationship takes this number, then we add 1 so the next one
+    // is different.
     let nextId = computeNextId();
 
-    // "editingId" remembers which person (by ID) is currently being edited.
-    // It is null when nobody is being edited.
+    // "editingId" remembers which character (by ID) is currently being
+    // edited. It is null when nobody is being edited.
     let editingId = null;
 
     // --- Step C: Functions (reusable instructions). ---
@@ -267,8 +269,8 @@
     // finding the highest ID already in use and adding 1.
     function computeNextId() {
       let highest = 0;
-      people.forEach(function (person) {
-        if (person.id > highest) { highest = person.id; }
+      characters.forEach(function (character) {
+        if (character.id > highest) { highest = character.id; }
       });
       relationships.forEach(function (rel) {
         if (rel.id > highest) { highest = rel.id; }
@@ -276,30 +278,22 @@
       return highest + 1;
     }
 
-    // findPerson: looks up a person by their ID. Returns the person
-    // bundle, or undefined if no one matches.
-    function findPerson(id) {
-      return people.find(function (person) {
-        return person.id === id;
+    // findCharacter: looks up a character by their ID. Returns the
+    // character bundle, or undefined if no one matches.
+    function findCharacter(id) {
+      return characters.find(function (character) {
+        return character.id === id;
       });
     }
 
-    // loadPeople: gets the saved people out of the browser's storage.
-    function loadPeople() {
-      const savedText = localStorage.getItem(PEOPLE_KEY);
+    // loadCharacters: gets the saved characters out of the browser's storage.
+    function loadCharacters() {
+      const savedText = localStorage.getItem(CHARACTERS_KEY);
       if (!savedText) {
         return [];  // nothing saved yet — start with an empty list
       }
-      const saved = JSON.parse(savedText);
-      // Older versions of this page saved each person as just a name
-      // (plain text). Here we quietly upgrade that old format into the
-      // new { id, name } bundle so existing names keep working.
-      return saved.map(function (item, index) {
-        if (typeof item === "string") {
-          return { id: index + 1, name: item };
-        }
-        return item;  // already in the new format
-      });
+      // JSON.parse turns the stored text back into a real list.
+      return JSON.parse(savedText);
     }
 
     // loadRelationships: gets the saved relationships out of storage.
@@ -311,10 +305,10 @@
       return JSON.parse(savedText);
     }
 
-    // savePeople: writes the people list into the browser's storage.
-    function savePeople() {
+    // saveCharacters: writes the characters list into the browser's storage.
+    function saveCharacters() {
       // JSON.stringify turns our list into text so it can be stored.
-      localStorage.setItem(PEOPLE_KEY, JSON.stringify(people));
+      localStorage.setItem(CHARACTERS_KEY, JSON.stringify(characters));
     }
 
     // saveRelationships: writes the relationships list into storage.
@@ -322,42 +316,43 @@
       localStorage.setItem(RELATIONSHIPS_KEY, JSON.stringify(relationships));
     }
 
-    // ----- Drawing the PEOPLE list -----
+    // ----- Drawing the CHARACTERS list -----
 
-    // renderPeople: redraws the on-screen people list to match our data.
-    function renderPeople() {
-      peopleList.innerHTML = "";  // empty it, then rebuild fresh
+    // renderCharacters: redraws the on-screen characters list to match
+    // our data.
+    function renderCharacters() {
+      characterList.innerHTML = "";  // empty it, then rebuild fresh
 
-      if (people.length === 0) {
+      if (characters.length === 0) {
         const message = document.createElement("li");
         message.textContent = "No one here yet — add your first character above.";
         message.className = "empty-message";
-        peopleList.appendChild(message);
+        characterList.appendChild(message);
         return;
       }
 
-      people.forEach(function (person) {
+      characters.forEach(function (character) {
         const row = document.createElement("li");
 
-        // If THIS person is the one being edited, show a text box and
+        // If THIS character is the one being edited, show a text box and
         // a Save button instead of the normal name and buttons.
-        if (person.id === editingId) {
+        if (character.id === editingId) {
           const input = document.createElement("input");
           input.type = "text";
           input.className = "edit-input";
-          input.value = person.name;   // start with the current name
+          input.value = character.name;   // start with the current name
 
           const saveButton = document.createElement("button");
           saveButton.textContent = "Save";
           saveButton.className = "save-button";
           saveButton.addEventListener("click", function () {
-            saveEditedName(person.id, input.value);
+            saveEditedName(character.id, input.value);
           });
 
           // Pressing Enter while typing also saves.
           input.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
-              saveEditedName(person.id, input.value);
+              saveEditedName(character.id, input.value);
             }
           });
 
@@ -366,14 +361,14 @@
         } else {
           // Normal display: the name, then an Edit button and an x button.
           const nameText = document.createElement("span");
-          nameText.textContent = person.name;
+          nameText.textContent = character.name;
 
           const editButton = document.createElement("button");
           editButton.textContent = "Edit";
           editButton.className = "edit-button";
           editButton.addEventListener("click", function () {
-            editingId = person.id;   // mark this person as being edited
-            renderPeople();          // redraw so the text box appears
+            editingId = character.id;   // mark this character as being edited
+            renderCharacters();         // redraw so the text box appears
           });
 
           const removeButton = document.createElement("button");
@@ -381,7 +376,7 @@
           removeButton.className = "remove-button";
           removeButton.title = "Remove";
           removeButton.addEventListener("click", function () {
-            removePerson(person.id);
+            removeCharacter(character.id);
           });
 
           // Keep the two buttons together in a little group.
@@ -394,68 +389,69 @@
           row.appendChild(buttonGroup);
         }
 
-        peopleList.appendChild(row);
+        characterList.appendChild(row);
       });
     }
 
-    // addPerson: adds a new person to our list.
-    function addPerson() {
+    // addCharacter: adds a new character to our list.
+    function addCharacter() {
       const newName = nameInput.value.trim();  // .trim() removes blank spaces
       if (newName === "") {
         return;  // nothing typed — do nothing
       }
 
-      // Each new person gets a fresh ID and the typed name.
-      people.push({ id: makeId(), name: newName });
+      // Each new character gets a fresh ID and the typed name.
+      characters.push({ id: makeId(), name: newName });
 
-      savePeople();
-      renderPeople();
-      refreshPersonDropdowns();  // the new person should appear in the dropdowns
+      saveCharacters();
+      renderCharacters();
+      refreshCharacterDropdowns();  // the new character should appear in the dropdowns
 
       nameInput.value = "";
       nameInput.focus();
     }
 
-    // saveEditedName: stores a new name for the person being edited.
+    // saveEditedName: stores a new name for the character being edited.
     function saveEditedName(id, newNameRaw) {
       const newName = newNameRaw.trim();
       if (newName === "") {
         return;  // refuse to save an empty name
       }
 
-      const person = findPerson(id);
-      if (person) {
-        person.name = newName;  // the ID stays the same; only the name changes
+      const character = findCharacter(id);
+      if (character) {
+        character.name = newName;  // the ID stays the same; only the name changes
       }
 
       editingId = null;  // we're done editing
-      savePeople();
-      renderPeople();
-      refreshPersonDropdowns();  // dropdowns show names, so refresh them
-      renderRelationships();     // relationship wording uses names too
+      saveCharacters();
+      renderCharacters();
+      refreshCharacterDropdowns();  // dropdowns show names, so refresh them
+      renderRelationships();        // relationship wording uses names too
     }
 
-    // removePerson: deletes a person AND any relationships that mention them.
-    function removePerson(id) {
+    // removeCharacter: deletes a character AND any relationships that
+    // mention them.
+    function removeCharacter(id) {
       // .filter keeps only the items that pass the test, dropping the rest.
-      people = people.filter(function (person) {
-        return person.id !== id;
+      characters = characters.filter(function (character) {
+        return character.id !== id;
       });
 
-      // Drop any relationship where this person was either side,
+      // Drop any relationship where this character was either side,
       // so we never leave a connection pointing at someone gone.
       relationships = relationships.filter(function (rel) {
         return rel.fromId !== id && rel.toId !== id;
       });
 
       if (editingId === id) {
-        editingId = null;  // in case we removed the person being edited
+        editingId = null;  // in case we removed the character being edited
       }
 
-      savePeople();
+      saveCharacters();
       saveRelationships();
-      renderPeople();
-      refreshPersonDropdowns();
+      renderCharacters();
+      refreshCharacterDropdowns();
       renderRelationships();
     }
 
@@ -471,8 +467,8 @@
       });
     }
 
-    // fillPersonDropdown: puts every person into one dropdown menu.
-    function fillPersonDropdown(dropdown) {
+    // fillCharacterDropdown: puts every character into one dropdown menu.
+    function fillCharacterDropdown(dropdown) {
       // Remember what was selected so we can keep it after rebuilding.
       const previousValue = dropdown.value;
       dropdown.innerHTML = "";
@@ -480,24 +476,24 @@
       // A faint placeholder option shown first.
       const placeholder = document.createElement("option");
       placeholder.value = "";
-      placeholder.textContent = "— choose a person —";
+      placeholder.textContent = "— choose a character —";
       dropdown.appendChild(placeholder);
 
-      people.forEach(function (person) {
+      characters.forEach(function (character) {
         const option = document.createElement("option");
-        // The option's value is the person's ID (stored as text).
-        option.value = person.id;
-        option.textContent = person.name;
+        // The option's value is the character's ID (stored as text).
+        option.value = character.id;
+        option.textContent = character.name;
         dropdown.appendChild(option);
       });
 
       dropdown.value = previousValue;  // restore the earlier choice if still valid
     }
 
-    // refreshPersonDropdowns: rebuilds both person dropdowns.
-    function refreshPersonDropdowns() {
-      fillPersonDropdown(personASelect);
-      fillPersonDropdown(personBSelect);
+    // refreshCharacterDropdowns: rebuilds both character dropdowns.
+    function refreshCharacterDropdowns() {
+      fillCharacterDropdown(characterASelect);
+      fillCharacterDropdown(characterBSelect);
     }
 
     // labelForType: finds the friendly wording for a relationship code.
@@ -511,11 +507,11 @@
     // describeRelationship: turns a relationship bundle into a sentence,
     // e.g. "Alex is the parent of Jordan".
     function describeRelationship(rel) {
-      const fromPerson = findPerson(rel.fromId);
-      const toPerson   = findPerson(rel.toId);
-      // If a person is somehow missing, show "(unknown)" rather than crash.
-      const fromName = fromPerson ? fromPerson.name : "(unknown)";
-      const toName   = toPerson ? toPerson.name : "(unknown)";
+      const fromCharacter = findCharacter(rel.fromId);
+      const toCharacter   = findCharacter(rel.toId);
+      // If a character is somehow missing, show "(unknown)" rather than crash.
+      const fromName = fromCharacter ? fromCharacter.name : "(unknown)";
+      const toName   = toCharacter ? toCharacter.name : "(unknown)";
       return fromName + " " + labelForType(rel.type) + " " + toName;
     }
 
@@ -525,7 +521,7 @@
 
       if (relationships.length === 0) {
         const message = document.createElement("li");
-        message.textContent = "No relationships yet — connect two people above.";
+        message.textContent = "No relationships yet — connect two characters above.";
         message.className = "empty-message";
         relationshipsList.appendChild(message);
         return;
@@ -551,24 +547,24 @@
       });
     }
 
-    // addRelationship: connects the two chosen people.
+    // addRelationship: connects the two chosen characters.
     function addRelationship() {
       // The dropdown values are text. Number(...) turns them into numbers.
-      const fromValue = personASelect.value;
-      const toValue   = personBSelect.value;
+      const fromValue = characterASelect.value;
+      const toValue   = characterBSelect.value;
 
-      // Both people must be chosen.
+      // Both characters must be chosen.
       if (fromValue === "" || toValue === "") {
-        alert("Please choose two people for the relationship.");
+        alert("Please choose two characters for the relationship.");
         return;
       }
 
       const fromId = Number(fromValue);
       const toId   = Number(toValue);
 
-      // A person can't be in a relationship with themselves.
+      // A character can't be in a relationship with themselves.
       if (fromId === toId) {
-        alert("Please choose two different people.");
+        alert("Please choose two different characters.");
         return;
       }
 
@@ -594,12 +590,12 @@
 
     // --- Step D: Connect actions to the buttons. ---
 
-    addButton.addEventListener("click", addPerson);
+    addButton.addEventListener("click", addCharacter);
 
-    // Enter key in the name box also adds a person.
+    // Enter key in the name box also adds a character.
     nameInput.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
-        addPerson();
+        addCharacter();
       }
     });
 
@@ -607,8 +603,8 @@
 
     // --- Step E: Draw everything once when the page first opens. ---
     fillTypeDropdown();
-    refreshPersonDropdowns();
-    renderPeople();
+    refreshCharacterDropdowns();
+    renderCharacters();
     renderRelationships();
   </script>
 

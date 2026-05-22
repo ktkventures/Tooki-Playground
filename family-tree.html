@@ -33,9 +33,7 @@
     /* "body" is the whole page. This sets the overall look. */
     body {
       font-family: Arial, sans-serif;   /* a clean, easy-to-read font */
-      max-width: 700px;                 /* keep the content from getting too wide */
-      margin: 40px auto;                /* center the content, with space on top */
-      padding: 0 20px;                  /* a little breathing room on the sides */
+      margin: 40px;                     /* space around all four edges */
       background-color: #f7f5f2;        /* soft off-white background */
       color: #2b2b2b;                   /* dark gray text (softer than pure black) */
     }
@@ -97,7 +95,8 @@
     */
     #tree-area {
       position: relative;
-      height: 460px;
+      height: 70vh;        /* 70% of the browser window's height */
+      min-height: 420px;   /* ...but never shorter than this */
       border: 2px dashed #c9c4bd;
       border-radius: 8px;
       background-color: #fdfcfb;

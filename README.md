@@ -1,2 +1,2 @@
 # Tooki-Playground
-a repository for Tami's various projects. 
+a repository for Tooki's various projects. 

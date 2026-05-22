@@ -89,9 +89,9 @@
     }
 
     /*
-      The "tree area" — the canvas where character boxes live.
-      "position: relative" lets the boxes inside be placed at exact
-      x/y spots measured from this area's top-left corner.
+      The "tree area" is the on-screen viewport — a fixed window sized
+      to the browser. If the canvas inside is larger, "overflow: auto"
+      gives this area scrollbars so you can pan around the whole tree.
     */
     #tree-area {
       position: relative;
@@ -99,9 +99,21 @@
       min-height: 420px;   /* ...but never shorter than this */
       border: 2px dashed #c9c4bd;
       border-radius: 8px;
-      background-color: #fdfcfb;
-      overflow: hidden;
+      overflow: auto;
       margin-bottom: 16px;
+    }
+
+    /*
+      The canvas is the actual work surface that holds the boxes.
+      JavaScript sets its size: always at least as big as the tree
+      area, and big enough to contain every box. When it grows past
+      the tree area, the scrollbars appear.
+    */
+    #tree-canvas {
+      position: relative;
+      min-width: 100%;
+      min-height: 100%;
+      background-color: #fdfcfb;
     }
 
     /* While connecting, show a cross-hair so it's clear you're aiming. */
@@ -319,10 +331,14 @@
   </div>
 
   <!--
-    The tree area. Character boxes and the line layer go inside here.
+    The tree area is the on-screen "viewport" — a fixed window sized to
+    the browser. Inside it sits the canvas, which can be larger; when it
+    is, the tree area shows scrollbars so you can pan around.
   -->
   <div id="tree-area">
-    <svg id="line-layer"></svg>
+    <div id="tree-canvas">
+      <svg id="line-layer"></svg>
+    </div>
   </div>
 
   <!-- The relationship-type pop-up menu. JavaScript fills and positions it. -->
@@ -340,6 +356,7 @@
     const nameInput = document.getElementById("name-input");
     const addButton = document.getElementById("add-button");
     const treeArea  = document.getElementById("tree-area");
+    const canvas    = document.getElementById("tree-canvas");
     const lineLayer = document.getElementById("line-layer");
     const typeMenu  = document.getElementById("type-menu");
 
@@ -502,13 +519,32 @@
       });
     }
 
+    // resizeCanvas: sets the canvas big enough to hold every box, and
+    // never smaller than the visible tree area. When the canvas is
+    // bigger than the tree area, the tree area shows scrollbars to pan.
+    function resizeCanvas() {
+      let widest  = 0;
+      let tallest = 0;
+      characters.forEach(function (character) {
+        const box = boxElements[character.id];
+        if (!box) { return; }
+        const right  = character.x + box.offsetWidth;
+        const bottom = character.y + box.offsetHeight;
+        if (right  > widest)  { widest  = right; }
+        if (bottom > tallest) { tallest = bottom; }
+      });
+      const margin = 60;  // breathing room past the furthest box
+      canvas.style.width  = Math.max(treeArea.clientWidth,  widest  + margin) + "px";
+      canvas.style.height = Math.max(treeArea.clientHeight, tallest + margin) + "px";
+    }
+
     // --- Step D: Drawing the character boxes. ---
 
     // renderCharacters: redraws all the character boxes in the tree area.
     function renderCharacters() {
       // Remove the old boxes (and any "empty" message), but leave the
       // line layer in place.
-      const oldItems = treeArea.querySelectorAll(".character-box, .empty-message");
+      const oldItems = canvas.querySelectorAll(".character-box, .empty-message");
       oldItems.forEach(function (item) { item.remove(); });
 
       boxElements = {};  // start the ID-to-box lookup fresh
@@ -517,7 +553,8 @@
         const message = document.createElement("p");
         message.textContent = "No characters yet — add one above to begin.";
         message.className = "empty-message";
-        treeArea.appendChild(message);
+        canvas.appendChild(message);
+        resizeCanvas();
         renderLines();
         return;
       }
@@ -605,10 +642,11 @@
         });
 
         makeDraggable(box, character);
-        treeArea.appendChild(box);
+        canvas.appendChild(box);
         boxElements[character.id] = box;
       });
 
+      resizeCanvas();
       renderLines();
     }
 
@@ -627,25 +665,26 @@
         box.setPointerCapture(event.pointerId);
         box.classList.add("dragging");
 
-        const areaRect = treeArea.getBoundingClientRect();
-        const grabOffsetX = (event.clientX - areaRect.left) - character.x;
-        const grabOffsetY = (event.clientY - areaRect.top)  - character.y;
+        const canvasRect = canvas.getBoundingClientRect();
+        const grabOffsetX = (event.clientX - canvasRect.left) - character.x;
+        const grabOffsetY = (event.clientY - canvasRect.top)  - character.y;
 
         function onMove(moveEvent) {
-          let newX = (moveEvent.clientX - areaRect.left) - grabOffsetX;
-          let newY = (moveEvent.clientY - areaRect.top)  - grabOffsetY;
-
-          const maxX = treeArea.clientWidth  - box.offsetWidth;
-          const maxY = treeArea.clientHeight - box.offsetHeight;
-          newX = Math.max(0, Math.min(newX, maxX));
-          newY = Math.max(0, Math.min(newY, maxY));
+          // The box can move anywhere from the top-left corner onward.
+          // We only stop it at 0 (the corner); the canvas itself grows
+          // to fit, and scrollbars appear, so there is no far edge.
+          let newX = (moveEvent.clientX - canvasRect.left) - grabOffsetX;
+          let newY = (moveEvent.clientY - canvasRect.top)  - grabOffsetY;
+          newX = Math.max(0, newX);
+          newY = Math.max(0, newY);
 
           character.x = newX;
           character.y = newY;
           box.style.left = newX + "px";
           box.style.top  = newY + "px";
 
-          renderLines();  // lines follow the box as it moves
+          resizeCanvas();  // grow the canvas if the box moved past its edge
+          renderLines();   // lines follow the box as it moves
         }
 
         function onUp() {
@@ -999,14 +1038,14 @@
     // While connecting, the temporary line follows the cursor.
     treeArea.addEventListener("pointermove", function (event) {
       if (!connecting || !tempLine) { return; }
-      const areaRect = treeArea.getBoundingClientRect();
-      tempLine.setAttribute("x2", event.clientX - areaRect.left);
-      tempLine.setAttribute("y2", event.clientY - areaRect.top);
+      const canvasRect = canvas.getBoundingClientRect();
+      tempLine.setAttribute("x2", event.clientX - canvasRect.left);
+      tempLine.setAttribute("y2", event.clientY - canvasRect.top);
     });
 
     // Pressing empty space in the tree area cancels a connection.
     treeArea.addEventListener("pointerdown", function (event) {
-      if (connecting && event.target === treeArea) {
+      if (connecting && (event.target === canvas || event.target === treeArea)) {
         cancelConnecting();
       }
     });
@@ -1024,6 +1063,12 @@
         cancelConnecting();
         closeTypeMenu();
       }
+    });
+
+    // When the browser window changes size, keep the canvas at least
+    // as big as the tree area.
+    window.addEventListener("resize", function () {
+      resizeCanvas();
     });
 
     // --- Step J: Draw everything once when the page first opens. ---

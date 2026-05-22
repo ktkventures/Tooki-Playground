@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  family-tree.html — Step 2: Characters, editing, and relationships.
+  family-tree.html — A family tree with draggable character boxes.
 
   This is ONE file that contains three parts working together:
     1. HTML  — the structure of the page (the "bones")
@@ -26,7 +26,7 @@
     /* "body" is the whole page. This sets the overall look. */
     body {
       font-family: Arial, sans-serif;   /* a clean, easy-to-read font */
-      max-width: 600px;                 /* keep the content from getting too wide */
+      max-width: 700px;                 /* keep the content from getting too wide */
       margin: 40px auto;                /* center the content, with space on top */
       padding: 0 20px;                  /* a little breathing room on the sides */
       background-color: #f7f5f2;        /* soft off-white background */
@@ -86,52 +86,82 @@
       color: white;
     }
 
-    /* "ul" is a list. We remove the default bullet points. */
-    ul {
-      list-style: none;
-      padding: 0;
+    /*
+      The "tree area" — the canvas where character boxes live.
+      "position: relative" matters: it lets the boxes inside be placed
+      at exact x/y spots measured from this area's top-left corner.
+    */
+    #tree-area {
+      position: relative;
+      height: 440px;
+      border: 2px dashed #c9c4bd;
+      border-radius: 8px;
+      background-color: #fdfcfb;
+      overflow: hidden;            /* hide anything dragged past the edges */
+      margin-bottom: 16px;
     }
 
-    /* Each character or relationship sits in its own "li" (list item) row. */
-    li {
+    /*
+      A single character box. "position: absolute" lets us place it at
+      an exact spot using "left" (x) and "top" (y).
+    */
+    .character-box {
+      position: absolute;
       display: flex;
-      justify-content: space-between;  /* text on the left, buttons on the right */
-      align-items: center;
-      gap: 8px;
+      flex-direction: column;      /* name on top, buttons below */
+      gap: 6px;
+      min-width: 110px;
       background-color: white;
-      border: 1px solid #e0dcd5;
-      border-radius: 6px;
-      padding: 10px 14px;
-      margin-bottom: 8px;
+      border: 1px solid #c9c4bd;
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      cursor: grab;                /* show a "grab" hand to hint dragging */
+      user-select: none;           /* don't select text while dragging */
+      touch-action: none;          /* on a touchscreen, drag instead of scroll */
+    }
+
+    /* While a box is being dragged, lift it a little with a bigger shadow. */
+    .character-box.dragging {
+      cursor: grabbing;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+    }
+
+    /* The character's name shown at the top of the box. */
+    .character-name {
+      font-weight: bold;
+      text-align: center;
     }
 
     /* The little group that holds the Edit and x buttons together. */
     .button-group {
       display: flex;
+      justify-content: center;
       gap: 6px;
     }
 
-    /* The "Edit" button on each character's row. */
+    /* The "Edit" button on each character's box. */
     .edit-button {
-      padding: 6px 12px;
+      padding: 5px 10px;
       background-color: #4a6d8c;  /* calm blue */
       color: white;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     /* The "Save" button shown while editing a name. */
     .save-button {
-      padding: 6px 12px;
+      padding: 5px 10px;
       background-color: #5b8a72;  /* calm green */
       color: white;
-      font-size: 14px;
+      font-size: 13px;
     }
 
-    /* The text box shown while editing a name. */
+    /* The text box shown while editing a name inside a box. */
     .edit-input {
-      flex: 1;
-      padding: 8px;
-      font-size: 16px;
+      width: 100%;
+      box-sizing: border-box;     /* include padding in the width */
+      padding: 6px;
+      font-size: 15px;
       border: 1px solid #c9c4bd;
       border-radius: 6px;
     }
@@ -148,7 +178,26 @@
       line-height: 1;             /* keeps the "x" centered vertically */
     }
 
-    /* A friendly message shown when a list is empty. */
+    /* "ul" is a list. We remove the default bullet points. */
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    /* Each relationship sits in its own "li" (list item) row. */
+    li {
+      display: flex;
+      justify-content: space-between;  /* text on the left, x on the right */
+      align-items: center;
+      gap: 8px;
+      background-color: white;
+      border: 1px solid #e0dcd5;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+    }
+
+    /* A friendly message shown when a list or the tree area is empty. */
     .empty-message {
       text-align: center;
       color: #8a8a8a;
@@ -178,8 +227,11 @@
     <button id="add-button" class="add-button">Add</button>
   </div>
 
-  <!-- This list is where each character appears. JavaScript fills it in. -->
-  <ul id="character-list"></ul>
+  <!--
+    The tree area. Character boxes are placed inside here by JavaScript.
+    It starts empty.
+  -->
+  <div id="tree-area"></div>
 
   <!-- ===== RELATIONSHIPS SECTION ===== -->
   <h2>Relationships</h2>
@@ -211,7 +263,7 @@
     // document.getElementById finds an element by the "id" we gave it.
     const nameInput            = document.getElementById("name-input");
     const addButton            = document.getElementById("add-button");
-    const characterList        = document.getElementById("character-list");
+    const treeArea             = document.getElementById("tree-area");
 
     const characterASelect     = document.getElementById("character-a");
     const characterBSelect     = document.getElementById("character-b");
@@ -237,9 +289,11 @@
 
     // --- Step B: Our data. ---
     // "characters" is a list where each character is a small bundle:
-    // { id, name }. The "id" is a permanent, unique number — like a
-    // membership number. It never changes, even if the name does.
-    // Relationships point at IDs.
+    //   { id, name, x, y }
+    // id   — a permanent, unique number (like a membership number)
+    // name — the character's name (this is the only part you can edit)
+    // x, y — where the box sits in the tree area: x is across, y is down,
+    //         both measured in pixels from the area's top-left corner.
     let characters = loadCharacters();
 
     // "relationships" is a list where each connection is a bundle:
@@ -316,31 +370,43 @@
       localStorage.setItem(RELATIONSHIPS_KEY, JSON.stringify(relationships));
     }
 
-    // ----- Drawing the CHARACTERS list -----
+    // nextStartingSpot: picks a default x/y for a brand-new character.
+    // We nudge each new box a little down-and-right from the last so
+    // they don't all land in an exact stack.
+    function nextStartingSpot() {
+      const step = 26;
+      const slot = characters.length % 6;  // cycle through 6 staggered spots
+      return { x: 20 + slot * step, y: 20 + slot * step };
+    }
 
-    // renderCharacters: redraws the on-screen characters list to match
-    // our data.
+    // ----- Drawing the CHARACTER BOXES -----
+
+    // renderCharacters: redraws all the character boxes in the tree area.
     function renderCharacters() {
-      characterList.innerHTML = "";  // empty it, then rebuild fresh
+      treeArea.innerHTML = "";  // empty it, then rebuild fresh
 
       if (characters.length === 0) {
-        const message = document.createElement("li");
-        message.textContent = "No one here yet — add your first character above.";
+        const message = document.createElement("p");
+        message.textContent = "No characters yet — add one above, then drag it around.";
         message.className = "empty-message";
-        characterList.appendChild(message);
+        treeArea.appendChild(message);
         return;
       }
 
       characters.forEach(function (character) {
-        const row = document.createElement("li");
+        const box = document.createElement("div");
+        box.className = "character-box";
+        // Place the box at its saved spot.
+        box.style.left = character.x + "px";
+        box.style.top  = character.y + "px";
 
-        // If THIS character is the one being edited, show a text box and
-        // a Save button instead of the normal name and buttons.
+        // If THIS character is the one being edited, show a text box
+        // and a Save button instead of the name and the usual buttons.
         if (character.id === editingId) {
           const input = document.createElement("input");
           input.type = "text";
           input.className = "edit-input";
-          input.value = character.name;   // start with the current name
+          input.value = character.name;
 
           const saveButton = document.createElement("button");
           saveButton.textContent = "Save";
@@ -356,11 +422,12 @@
             }
           });
 
-          row.appendChild(input);
-          row.appendChild(saveButton);
+          box.appendChild(input);
+          box.appendChild(saveButton);
         } else {
           // Normal display: the name, then an Edit button and an x button.
-          const nameText = document.createElement("span");
+          const nameText = document.createElement("div");
+          nameText.className = "character-name";
           nameText.textContent = character.name;
 
           const editButton = document.createElement("button");
@@ -379,17 +446,81 @@
             removeCharacter(character.id);
           });
 
-          // Keep the two buttons together in a little group.
           const buttonGroup = document.createElement("div");
           buttonGroup.className = "button-group";
           buttonGroup.appendChild(editButton);
           buttonGroup.appendChild(removeButton);
 
-          row.appendChild(nameText);
-          row.appendChild(buttonGroup);
+          box.appendChild(nameText);
+          box.appendChild(buttonGroup);
         }
 
-        characterList.appendChild(row);
+        // Make this box draggable, then add it to the tree area.
+        makeDraggable(box, character);
+        treeArea.appendChild(box);
+      });
+    }
+
+    // makeDraggable: lets a box be dragged around the tree area.
+    //
+    // Dragging is three moments the computer watches for:
+    //   1. pointerdown — you press on the box
+    //   2. pointermove — you move while still pressing
+    //   3. pointerup   — you let go
+    // "pointer" events cover both a mouse and a finger on a touchscreen.
+    function makeDraggable(box, character) {
+      box.addEventListener("pointerdown", function (event) {
+        // If you pressed a button or the edit text box, don't start a
+        // drag — let that button or text box do its own job.
+        if (event.target.closest("button") || event.target.closest("input")) {
+          return;
+        }
+
+        // Capture the pointer so we keep getting move/up events even if
+        // the pointer briefly slips off the box.
+        box.setPointerCapture(event.pointerId);
+        box.classList.add("dragging");
+
+        // The tree area's position on screen. We measure pointer
+        // positions relative to this corner.
+        const areaRect = treeArea.getBoundingClientRect();
+
+        // How far inside the box you grabbed it. Subtracting this later
+        // stops the box from "jumping" so its corner meets your cursor.
+        const grabOffsetX = (event.clientX - areaRect.left) - character.x;
+        const grabOffsetY = (event.clientY - areaRect.top)  - character.y;
+
+        // onMove runs every time the pointer moves during the drag.
+        function onMove(moveEvent) {
+          // Where the box's top-left corner should now be.
+          let newX = (moveEvent.clientX - areaRect.left) - grabOffsetX;
+          let newY = (moveEvent.clientY - areaRect.top)  - grabOffsetY;
+
+          // Keep the box fully inside the tree area.
+          // Math.max stops it going past the left/top edge;
+          // Math.min stops it going past the right/bottom edge.
+          const maxX = treeArea.clientWidth  - box.offsetWidth;
+          const maxY = treeArea.clientHeight - box.offsetHeight;
+          newX = Math.max(0, Math.min(newX, maxX));
+          newY = Math.max(0, Math.min(newY, maxY));
+
+          // Update both the data and what's on screen.
+          character.x = newX;
+          character.y = newY;
+          box.style.left = newX + "px";
+          box.style.top  = newY + "px";
+        }
+
+        // onUp runs once when you let go.
+        function onUp() {
+          box.classList.remove("dragging");
+          box.removeEventListener("pointermove", onMove);
+          box.removeEventListener("pointerup", onUp);
+          saveCharacters();  // remember the new position
+        }
+
+        box.addEventListener("pointermove", onMove);
+        box.addEventListener("pointerup", onUp);
       });
     }
 
@@ -400,8 +531,10 @@
         return;  // nothing typed — do nothing
       }
 
-      // Each new character gets a fresh ID and the typed name.
-      characters.push({ id: makeId(), name: newName });
+      // Each new character gets a fresh ID, the typed name, and a
+      // starting spot in the tree area.
+      const spot = nextStartingSpot();
+      characters.push({ id: makeId(), name: newName, x: spot.x, y: spot.y });
 
       saveCharacters();
       renderCharacters();

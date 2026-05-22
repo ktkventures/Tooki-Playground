@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  family-tree.html — Step 1: Adding and listing people.
+  family-tree.html — Step 2: People, editing, and relationships.
 
   This is ONE file that contains three parts working together:
     1. HTML  — the structure of the page (the "bones")
@@ -37,11 +37,19 @@
       text-align: center;
     }
 
-    /* The row that holds the text box and the Add button. */
+    /* Section headings ("People", "Relationships"). */
+    h2 {
+      margin-top: 32px;
+      border-bottom: 2px solid #e0dcd5;  /* a thin underline to separate sections */
+      padding-bottom: 6px;
+    }
+
+    /* A row that holds inputs and a button side by side. */
     .add-row {
-      display: flex;        /* place the text box and button side by side */
-      gap: 8px;             /* a small gap between them */
-      margin-bottom: 20px;
+      display: flex;        /* place items in a row */
+      flex-wrap: wrap;      /* if they don't fit, let them wrap onto the next line */
+      gap: 8px;             /* a small gap between items */
+      margin-bottom: 16px;
     }
 
     /* The text box where you type a name. */
@@ -53,6 +61,16 @@
       border-radius: 6px;   /* slightly rounded corners */
     }
 
+    /* Dropdown menus (the "select" boxes) in the relationship row. */
+    select {
+      flex: 1 1 130px;      /* stretch, but try to be at least 130px wide */
+      padding: 10px;
+      font-size: 15px;
+      border: 1px solid #c9c4bd;
+      border-radius: 6px;
+      background-color: white;
+    }
+
     /* Shared look for all buttons on the page. */
     button {
       cursor: pointer;      /* show a clicking hand when hovering */
@@ -61,24 +79,25 @@
       font-size: 16px;
     }
 
-    /* The main "Add" button. */
-    #add-button {
+    /* The main green "Add" buttons. */
+    .add-button {
       padding: 10px 18px;
       background-color: #5b8a72;  /* calm green */
       color: white;
     }
 
-    /* "ul" is the list. We remove the default bullet points. */
+    /* "ul" is a list. We remove the default bullet points. */
     ul {
       list-style: none;
       padding: 0;
     }
 
-    /* Each person sits in their own "li" (list item) row. */
+    /* Each person or relationship sits in its own "li" (list item) row. */
     li {
       display: flex;
-      justify-content: space-between;  /* name on the left, button on the right */
+      justify-content: space-between;  /* text on the left, buttons on the right */
       align-items: center;
+      gap: 8px;
       background-color: white;
       border: 1px solid #e0dcd5;
       border-radius: 6px;
@@ -86,7 +105,38 @@
       margin-bottom: 8px;
     }
 
-    /* The small "x" button on each person's row that removes them. */
+    /* The little group that holds the Edit and x buttons together. */
+    .button-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* The "Edit" button on each person's row. */
+    .edit-button {
+      padding: 6px 12px;
+      background-color: #4a6d8c;  /* calm blue */
+      color: white;
+      font-size: 14px;
+    }
+
+    /* The "Save" button shown while editing a name. */
+    .save-button {
+      padding: 6px 12px;
+      background-color: #5b8a72;  /* calm green */
+      color: white;
+      font-size: 14px;
+    }
+
+    /* The text box shown while editing a name. */
+    .edit-input {
+      flex: 1;
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #c9c4bd;
+      border-radius: 6px;
+    }
+
+    /* The small "x" button that removes a person or relationship. */
     .remove-button {
       /* A fixed width and height make it a small, even square. */
       width: 24px;
@@ -98,7 +148,7 @@
       line-height: 1;             /* keeps the "x" centered vertically */
     }
 
-    /* A friendly message shown when the list is empty. */
+    /* A friendly message shown when a list is empty. */
     .empty-message {
       text-align: center;
       color: #8a8a8a;
@@ -115,6 +165,9 @@
 
   <h1>Family Tree Creator</h1>
 
+  <!-- ===== PEOPLE SECTION ===== -->
+  <h2>People</h2>
+
   <!-- The row with the text box and the Add button. -->
   <div class="add-row">
     <!--
@@ -122,14 +175,29 @@
       "placeholder" is the faint hint text shown when the box is empty.
     -->
     <input type="text" id="name-input" placeholder="Type a character's name...">
-    <button id="add-button">Add</button>
+    <button id="add-button" class="add-button">Add</button>
   </div>
 
-  <!--
-    This empty list is where each person will appear.
-    The JavaScript fills it in; it starts empty.
-  -->
+  <!-- This list is where each person appears. JavaScript fills it in. -->
   <ul id="people-list"></ul>
+
+  <!-- ===== RELATIONSHIPS SECTION ===== -->
+  <h2>Relationships</h2>
+
+  <!--
+    The row for adding a relationship: two person dropdowns with a
+    relationship-type dropdown in the middle. JavaScript fills the
+    dropdowns with your people and the relationship choices.
+  -->
+  <div class="add-row">
+    <select id="person-a"></select>
+    <select id="relationship-type"></select>
+    <select id="person-b"></select>
+    <button id="add-relationship-button" class="add-button">Add</button>
+  </div>
+
+  <!-- This list is where each relationship appears. -->
+  <ul id="relationships-list"></ul>
 
 
   <script>
@@ -141,131 +209,407 @@
 
     // --- Step A: Find the parts of the page we need to work with. ---
     // document.getElementById finds an element by the "id" we gave it.
-    const nameInput  = document.getElementById("name-input");
-    const addButton  = document.getElementById("add-button");
-    const peopleList = document.getElementById("people-list");
+    const nameInput            = document.getElementById("name-input");
+    const addButton            = document.getElementById("add-button");
+    const peopleList           = document.getElementById("people-list");
 
-    // The name of the "drawer" in the browser's storage where we keep data.
-    const STORAGE_KEY = "familyTreePeople";
+    const personASelect        = document.getElementById("person-a");
+    const personBSelect        = document.getElementById("person-b");
+    const typeSelect           = document.getElementById("relationship-type");
+    const addRelationshipBtn   = document.getElementById("add-relationship-button");
+    const relationshipsList    = document.getElementById("relationships-list");
+
+    // The "drawers" in the browser's storage where we keep each kind of data.
+    const PEOPLE_KEY        = "familyTreePeople";
+    const RELATIONSHIPS_KEY = "familyTreeRelationships";
+
+    // The kinds of relationship you can pick. Each one has:
+    //   value — a short code we store
+    //   label — the friendly wording shown on screen
+    // Keeping these in one list means we can reuse it in two places:
+    // to fill the dropdown AND to write the relationship out in words.
+    const RELATIONSHIP_TYPES = [
+      { value: "parent",  label: "is the parent of" },
+      { value: "child",   label: "is a child of" },
+      { value: "partner", label: "is a partner of" },
+      { value: "sibling", label: "is a sibling of" }
+    ];
 
     // --- Step B: Our data. ---
-    // "people" is a list (called an array) of names.
-    // We try to load any previously saved names; if there are none, we
-    // start with an empty list.
+    // "people" is a list where each person is a small bundle: { id, name }.
+    // The "id" is a permanent, unique number — like a membership number.
+    // It never changes, even if the name does. Relationships point at IDs.
     let people = loadPeople();
+
+    // "relationships" is a list where each connection is a bundle:
+    //   { id, fromId, toId, type }
+    // fromId and toId are the IDs of the two people being connected.
+    let relationships = loadRelationships();
+
+    // "nextId" is the next unused number. Every new person or relationship
+    // takes this number, then we add 1 so the next one is different.
+    let nextId = computeNextId();
+
+    // "editingId" remembers which person (by ID) is currently being edited.
+    // It is null when nobody is being edited.
+    let editingId = null;
 
     // --- Step C: Functions (reusable instructions). ---
 
-    // loadPeople: gets the saved list out of the browser's storage.
-    function loadPeople() {
-      // localStorage can only store text, so saved data is text that
-      // looks like a list. JSON.parse turns that text back into a real list.
-      const savedText = localStorage.getItem(STORAGE_KEY);
-      if (savedText) {
-        return JSON.parse(savedText);
-      }
-      // Nothing saved yet — start fresh with an empty list.
-      return [];
+    // makeId: hands out the next unused ID number.
+    function makeId() {
+      const id = nextId;
+      nextId = nextId + 1;
+      return id;
     }
 
-    // savePeople: writes the current list into the browser's storage.
+    // computeNextId: works out a safe starting point for new IDs by
+    // finding the highest ID already in use and adding 1.
+    function computeNextId() {
+      let highest = 0;
+      people.forEach(function (person) {
+        if (person.id > highest) { highest = person.id; }
+      });
+      relationships.forEach(function (rel) {
+        if (rel.id > highest) { highest = rel.id; }
+      });
+      return highest + 1;
+    }
+
+    // findPerson: looks up a person by their ID. Returns the person
+    // bundle, or undefined if no one matches.
+    function findPerson(id) {
+      return people.find(function (person) {
+        return person.id === id;
+      });
+    }
+
+    // loadPeople: gets the saved people out of the browser's storage.
+    function loadPeople() {
+      const savedText = localStorage.getItem(PEOPLE_KEY);
+      if (!savedText) {
+        return [];  // nothing saved yet — start with an empty list
+      }
+      const saved = JSON.parse(savedText);
+      // Older versions of this page saved each person as just a name
+      // (plain text). Here we quietly upgrade that old format into the
+      // new { id, name } bundle so existing names keep working.
+      return saved.map(function (item, index) {
+        if (typeof item === "string") {
+          return { id: index + 1, name: item };
+        }
+        return item;  // already in the new format
+      });
+    }
+
+    // loadRelationships: gets the saved relationships out of storage.
+    function loadRelationships() {
+      const savedText = localStorage.getItem(RELATIONSHIPS_KEY);
+      if (!savedText) {
+        return [];
+      }
+      return JSON.parse(savedText);
+    }
+
+    // savePeople: writes the people list into the browser's storage.
     function savePeople() {
       // JSON.stringify turns our list into text so it can be stored.
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
+      localStorage.setItem(PEOPLE_KEY, JSON.stringify(people));
     }
 
-    // renderPeople: redraws the on-screen list to match our data.
-    // We call this whenever the data changes.
-    function renderPeople() {
-      // Empty the list on screen so we can rebuild it fresh.
-      peopleList.innerHTML = "";
+    // saveRelationships: writes the relationships list into storage.
+    function saveRelationships() {
+      localStorage.setItem(RELATIONSHIPS_KEY, JSON.stringify(relationships));
+    }
 
-      // If there are no people, show a friendly hint instead.
+    // ----- Drawing the PEOPLE list -----
+
+    // renderPeople: redraws the on-screen people list to match our data.
+    function renderPeople() {
+      peopleList.innerHTML = "";  // empty it, then rebuild fresh
+
       if (people.length === 0) {
         const message = document.createElement("li");
         message.textContent = "No one here yet — add your first character above.";
         message.className = "empty-message";
         peopleList.appendChild(message);
-        return;  // stop here; nothing else to draw
+        return;
       }
 
-      // Go through each name and build a row for it.
-      // "index" is the position in the list (0 for the first, 1 for the next...).
-      people.forEach(function (name, index) {
-        // Create the row (an <li> element).
+      people.forEach(function (person) {
         const row = document.createElement("li");
 
-        // A <span> just to hold the name text.
-        const nameText = document.createElement("span");
-        nameText.textContent = name;
+        // If THIS person is the one being edited, show a text box and
+        // a Save button instead of the normal name and buttons.
+        if (person.id === editingId) {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "edit-input";
+          input.value = person.name;   // start with the current name
 
-        // The small "x" button that removes this specific person.
-        const removeButton = document.createElement("button");
-        removeButton.textContent = "x";
-        removeButton.className = "remove-button";
-        // "title" is the little tooltip shown when you hover the button,
-        // so it's still clear that the "x" means remove.
-        removeButton.title = "Remove";
-        // When this button is clicked, remove this person.
-        removeButton.addEventListener("click", function () {
-          removePerson(index);
-        });
+          const saveButton = document.createElement("button");
+          saveButton.textContent = "Save";
+          saveButton.className = "save-button";
+          saveButton.addEventListener("click", function () {
+            saveEditedName(person.id, input.value);
+          });
 
-        // Put the name and the button inside the row...
-        row.appendChild(nameText);
-        row.appendChild(removeButton);
-        // ...and put the row inside the list on the page.
+          // Pressing Enter while typing also saves.
+          input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+              saveEditedName(person.id, input.value);
+            }
+          });
+
+          row.appendChild(input);
+          row.appendChild(saveButton);
+        } else {
+          // Normal display: the name, then an Edit button and an x button.
+          const nameText = document.createElement("span");
+          nameText.textContent = person.name;
+
+          const editButton = document.createElement("button");
+          editButton.textContent = "Edit";
+          editButton.className = "edit-button";
+          editButton.addEventListener("click", function () {
+            editingId = person.id;   // mark this person as being edited
+            renderPeople();          // redraw so the text box appears
+          });
+
+          const removeButton = document.createElement("button");
+          removeButton.textContent = "x";
+          removeButton.className = "remove-button";
+          removeButton.title = "Remove";
+          removeButton.addEventListener("click", function () {
+            removePerson(person.id);
+          });
+
+          // Keep the two buttons together in a little group.
+          const buttonGroup = document.createElement("div");
+          buttonGroup.className = "button-group";
+          buttonGroup.appendChild(editButton);
+          buttonGroup.appendChild(removeButton);
+
+          row.appendChild(nameText);
+          row.appendChild(buttonGroup);
+        }
+
         peopleList.appendChild(row);
       });
     }
 
-    // addPerson: adds a new name to our list.
+    // addPerson: adds a new person to our list.
     function addPerson() {
-      // ".value" is whatever is currently typed in the box.
-      // ".trim()" removes blank spaces from the start and end.
-      const newName = nameInput.value.trim();
-
-      // If the box was empty (or just spaces), do nothing.
+      const newName = nameInput.value.trim();  // .trim() removes blank spaces
       if (newName === "") {
-        return;
+        return;  // nothing typed — do nothing
       }
 
-      // Add the new name to the end of our list.
-      people.push(newName);
+      // Each new person gets a fresh ID and the typed name.
+      people.push({ id: makeId(), name: newName });
 
-      // Save the change, then redraw the screen.
       savePeople();
       renderPeople();
+      refreshPersonDropdowns();  // the new person should appear in the dropdowns
 
-      // Clear the text box and put the cursor back in it,
-      // ready for the next name.
       nameInput.value = "";
       nameInput.focus();
     }
 
-    // removePerson: deletes the person at the given position.
-    function removePerson(index) {
-      // ".splice" removes items from a list. Here: remove 1 item
-      // starting at "index".
-      people.splice(index, 1);
+    // saveEditedName: stores a new name for the person being edited.
+    function saveEditedName(id, newNameRaw) {
+      const newName = newNameRaw.trim();
+      if (newName === "") {
+        return;  // refuse to save an empty name
+      }
+
+      const person = findPerson(id);
+      if (person) {
+        person.name = newName;  // the ID stays the same; only the name changes
+      }
+
+      editingId = null;  // we're done editing
       savePeople();
       renderPeople();
+      refreshPersonDropdowns();  // dropdowns show names, so refresh them
+      renderRelationships();     // relationship wording uses names too
+    }
+
+    // removePerson: deletes a person AND any relationships that mention them.
+    function removePerson(id) {
+      // .filter keeps only the items that pass the test, dropping the rest.
+      people = people.filter(function (person) {
+        return person.id !== id;
+      });
+
+      // Drop any relationship where this person was either side,
+      // so we never leave a connection pointing at someone gone.
+      relationships = relationships.filter(function (rel) {
+        return rel.fromId !== id && rel.toId !== id;
+      });
+
+      if (editingId === id) {
+        editingId = null;  // in case we removed the person being edited
+      }
+
+      savePeople();
+      saveRelationships();
+      renderPeople();
+      refreshPersonDropdowns();
+      renderRelationships();
+    }
+
+    // ----- Drawing the RELATIONSHIPS list -----
+
+    // fillTypeDropdown: puts the relationship choices into the type dropdown.
+    function fillTypeDropdown() {
+      RELATIONSHIP_TYPES.forEach(function (type) {
+        const option = document.createElement("option");
+        option.value = type.value;       // the short code we store
+        option.textContent = type.label; // the friendly wording shown
+        typeSelect.appendChild(option);
+      });
+    }
+
+    // fillPersonDropdown: puts every person into one dropdown menu.
+    function fillPersonDropdown(dropdown) {
+      // Remember what was selected so we can keep it after rebuilding.
+      const previousValue = dropdown.value;
+      dropdown.innerHTML = "";
+
+      // A faint placeholder option shown first.
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "— choose a person —";
+      dropdown.appendChild(placeholder);
+
+      people.forEach(function (person) {
+        const option = document.createElement("option");
+        // The option's value is the person's ID (stored as text).
+        option.value = person.id;
+        option.textContent = person.name;
+        dropdown.appendChild(option);
+      });
+
+      dropdown.value = previousValue;  // restore the earlier choice if still valid
+    }
+
+    // refreshPersonDropdowns: rebuilds both person dropdowns.
+    function refreshPersonDropdowns() {
+      fillPersonDropdown(personASelect);
+      fillPersonDropdown(personBSelect);
+    }
+
+    // labelForType: finds the friendly wording for a relationship code.
+    function labelForType(typeValue) {
+      const match = RELATIONSHIP_TYPES.find(function (type) {
+        return type.value === typeValue;
+      });
+      return match ? match.label : typeValue;
+    }
+
+    // describeRelationship: turns a relationship bundle into a sentence,
+    // e.g. "Alex is the parent of Jordan".
+    function describeRelationship(rel) {
+      const fromPerson = findPerson(rel.fromId);
+      const toPerson   = findPerson(rel.toId);
+      // If a person is somehow missing, show "(unknown)" rather than crash.
+      const fromName = fromPerson ? fromPerson.name : "(unknown)";
+      const toName   = toPerson ? toPerson.name : "(unknown)";
+      return fromName + " " + labelForType(rel.type) + " " + toName;
+    }
+
+    // renderRelationships: redraws the on-screen relationships list.
+    function renderRelationships() {
+      relationshipsList.innerHTML = "";
+
+      if (relationships.length === 0) {
+        const message = document.createElement("li");
+        message.textContent = "No relationships yet — connect two people above.";
+        message.className = "empty-message";
+        relationshipsList.appendChild(message);
+        return;
+      }
+
+      relationships.forEach(function (rel) {
+        const row = document.createElement("li");
+
+        const text = document.createElement("span");
+        text.textContent = describeRelationship(rel);
+
+        const removeButton = document.createElement("button");
+        removeButton.textContent = "x";
+        removeButton.className = "remove-button";
+        removeButton.title = "Remove";
+        removeButton.addEventListener("click", function () {
+          removeRelationship(rel.id);
+        });
+
+        row.appendChild(text);
+        row.appendChild(removeButton);
+        relationshipsList.appendChild(row);
+      });
+    }
+
+    // addRelationship: connects the two chosen people.
+    function addRelationship() {
+      // The dropdown values are text. Number(...) turns them into numbers.
+      const fromValue = personASelect.value;
+      const toValue   = personBSelect.value;
+
+      // Both people must be chosen.
+      if (fromValue === "" || toValue === "") {
+        alert("Please choose two people for the relationship.");
+        return;
+      }
+
+      const fromId = Number(fromValue);
+      const toId   = Number(toValue);
+
+      // A person can't be in a relationship with themselves.
+      if (fromId === toId) {
+        alert("Please choose two different people.");
+        return;
+      }
+
+      relationships.push({
+        id: makeId(),
+        fromId: fromId,
+        toId: toId,
+        type: typeSelect.value
+      });
+
+      saveRelationships();
+      renderRelationships();
+    }
+
+    // removeRelationship: deletes one relationship by its ID.
+    function removeRelationship(id) {
+      relationships = relationships.filter(function (rel) {
+        return rel.id !== id;
+      });
+      saveRelationships();
+      renderRelationships();
     }
 
     // --- Step D: Connect actions to the buttons. ---
 
-    // When the Add button is clicked, run addPerson.
     addButton.addEventListener("click", addPerson);
 
-    // Also let the Enter key add a person while typing in the box.
+    // Enter key in the name box also adds a person.
     nameInput.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
         addPerson();
       }
     });
 
-    // --- Step E: Draw the list once when the page first opens. ---
+    addRelationshipBtn.addEventListener("click", addRelationship);
+
+    // --- Step E: Draw everything once when the page first opens. ---
+    fillTypeDropdown();
+    refreshPersonDropdowns();
     renderPeople();
+    renderRelationships();
   </script>
 
 </body>

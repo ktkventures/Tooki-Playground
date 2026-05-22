@@ -120,24 +120,24 @@
       colour and "stroke-width" is its thickness.
     */
 
-    /* Partner line — pink and dotted. */
+    /* Partner line — bold pink and dotted. */
     .partner-line {
-      stroke: #d98ab0;
-      stroke-width: 2;
-      stroke-dasharray: 2 5;   /* short marks with gaps... */
+      stroke: #d6418a;
+      stroke-width: 3;
+      stroke-dasharray: 2 6;   /* short marks with gaps... */
       stroke-linecap: round;   /* ...rounded into dots */
     }
 
-    /* Offspring (parent-to-child) line — green. */
+    /* Offspring (parent-to-child) line — red. */
     .offspring-line {
-      stroke: #5a9e5a;
+      stroke: #c0392b;
       stroke-width: 2;
       fill: none;              /* draw only the line, never fill a shape */
     }
 
-    /* Manually-added sibling arch — soft grey. */
+    /* Sibling arch — red. */
     .sibling-line {
-      stroke: #9a8f80;
+      stroke: #c0392b;
       stroke-width: 2;
       fill: none;
     }
@@ -694,26 +694,28 @@
           return;
         }
 
-        // Several children: build the centred "square arch".
-        // First find how high to put the horizontal bar, and how far
-        // the farthest child sits from the couple's midpoint.
-        let highestTop  = Infinity;
-        let farthest    = 0;
+        // Several children: build the "square arch".
+        // We need three numbers: how high to put the horizontal bar,
+        // and where its left and right ends go.
+        //
+        // The bar must always reach the spot where the parent line
+        // drops down (midpoint.x), so we start both ends there. Then we
+        // stretch each end out just far enough to cover every child —
+        // and no further — so there is never a leftover tail.
+        let highestTop = Infinity;
+        let barLeft    = midpoint.x;
+        let barRight   = midpoint.x;
         kids.forEach(function (kidId) {
           const kid = boxGeometry(kidId);
           if (!kid) { return; }
           if (kid.topY < highestTop) { highestTop = kid.topY; }
-          const distance = Math.abs(kid.topX - midpoint.x);
-          if (distance > farthest) { farthest = distance; }
+          if (kid.topX < barLeft)    { barLeft    = kid.topX; }
+          if (kid.topX > barRight)   { barRight   = kid.topX; }
         });
         if (highestTop === Infinity) { return; }  // no drawable children
 
-        // The bar sits a little above the highest child. It is centred
-        // on the couple's midpoint and reaches out equally on both
-        // sides — far enough to meet the farthest child.
-        const barY     = highestTop - 28;
-        const barLeft  = midpoint.x - farthest;
-        const barRight = midpoint.x + farthest;
+        // The bar sits a little above the highest child.
+        const barY = highestTop - 28;
 
         // Green line dropping from the couple's midpoint down to the bar.
         lineLayer.appendChild(

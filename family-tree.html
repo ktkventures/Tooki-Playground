@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<!--
+  family-tree.html — Step 1: Adding and listing people.
+
+  This is ONE file that contains three parts working together:
+    1. HTML  — the structure of the page (the "bones")
+    2. CSS   — the styling inside the <style> tag (the "clothes")
+    3. JavaScript — the behavior inside the <script> tag (the "brain")
+
+  To use it: just double-click this file and it opens in your web browser.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- This line makes the page look right on phones as well as computers. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Tree Creator</title>
+
+  <style>
+    /*
+      CSS section. Each block below picks something on the page
+      (by its tag name, its "class", or its "id") and describes how
+      it should look.
+    */
+
+    /* "body" is the whole page. This sets the overall look. */
+    body {
+      font-family: Arial, sans-serif;   /* a clean, easy-to-read font */
+      max-width: 600px;                 /* keep the content from getting too wide */
+      margin: 40px auto;                /* center the content, with space on top */
+      padding: 0 20px;                  /* a little breathing room on the sides */
+      background-color: #f7f5f2;        /* soft off-white background */
+      color: #2b2b2b;                   /* dark gray text (softer than pure black) */
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    /* The row that holds the text box and the Add button. */
+    .add-row {
+      display: flex;        /* place the text box and button side by side */
+      gap: 8px;             /* a small gap between them */
+      margin-bottom: 20px;
+    }
+
+    /* The text box where you type a name. */
+    #name-input {
+      flex: 1;              /* let the text box stretch to fill the space */
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #c9c4bd;
+      border-radius: 6px;   /* slightly rounded corners */
+    }
+
+    /* Shared look for all buttons on the page. */
+    button {
+      cursor: pointer;      /* show a clicking hand when hovering */
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    /* The main "Add" button. */
+    #add-button {
+      padding: 10px 18px;
+      background-color: #5b8a72;  /* calm green */
+      color: white;
+    }
+
+    /* "ul" is the list. We remove the default bullet points. */
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    /* Each person sits in their own "li" (list item) row. */
+    li {
+      display: flex;
+      justify-content: space-between;  /* name on the left, button on the right */
+      align-items: center;
+      background-color: white;
+      border: 1px solid #e0dcd5;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+    }
+
+    /* The small "Remove" button on each person's row. */
+    .remove-button {
+      padding: 6px 12px;
+      background-color: #b5544c;  /* muted red */
+      color: white;
+      font-size: 14px;
+    }
+
+    /* A friendly message shown when the list is empty. */
+    .empty-message {
+      text-align: center;
+      color: #8a8a8a;
+      font-style: italic;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!--
+    HTML section. This is the visible structure of the page.
+  -->
+
+  <h1>Family Tree Creator</h1>
+
+  <!-- The row with the text box and the Add button. -->
+  <div class="add-row">
+    <!--
+      "id" gives an element a unique name so the JavaScript can find it.
+      "placeholder" is the faint hint text shown when the box is empty.
+    -->
+    <input type="text" id="name-input" placeholder="Type a character's name...">
+    <button id="add-button">Add</button>
+  </div>
+
+  <!--
+    This empty list is where each person will appear.
+    The JavaScript fills it in; it starts empty.
+  -->
+  <ul id="people-list"></ul>
+
+
+  <script>
+    /*
+      JavaScript section — the "brain" of the page.
+
+      Read this top to bottom. Comments explain WHY each piece exists.
+    */
+
+    // --- Step A: Find the parts of the page we need to work with. ---
+    // document.getElementById finds an element by the "id" we gave it.
+    const nameInput  = document.getElementById("name-input");
+    const addButton  = document.getElementById("add-button");
+    const peopleList = document.getElementById("people-list");
+
+    // The name of the "drawer" in the browser's storage where we keep data.
+    const STORAGE_KEY = "familyTreePeople";
+
+    // --- Step B: Our data. ---
+    // "people" is a list (called an array) of names.
+    // We try to load any previously saved names; if there are none, we
+    // start with an empty list.
+    let people = loadPeople();
+
+    // --- Step C: Functions (reusable instructions). ---
+
+    // loadPeople: gets the saved list out of the browser's storage.
+    function loadPeople() {
+      // localStorage can only store text, so saved data is text that
+      // looks like a list. JSON.parse turns that text back into a real list.
+      const savedText = localStorage.getItem(STORAGE_KEY);
+      if (savedText) {
+        return JSON.parse(savedText);
+      }
+      // Nothing saved yet — start fresh with an empty list.
+      return [];
+    }
+
+    // savePeople: writes the current list into the browser's storage.
+    function savePeople() {
+      // JSON.stringify turns our list into text so it can be stored.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
+    }
+
+    // renderPeople: redraws the on-screen list to match our data.
+    // We call this whenever the data changes.
+    function renderPeople() {
+      // Empty the list on screen so we can rebuild it fresh.
+      peopleList.innerHTML = "";
+
+      // If there are no people, show a friendly hint instead.
+      if (people.length === 0) {
+        const message = document.createElement("li");
+        message.textContent = "No one here yet — add your first character above.";
+        message.className = "empty-message";
+        peopleList.appendChild(message);
+        return;  // stop here; nothing else to draw
+      }
+
+      // Go through each name and build a row for it.
+      // "index" is the position in the list (0 for the first, 1 for the next...).
+      people.forEach(function (name, index) {
+        // Create the row (an <li> element).
+        const row = document.createElement("li");
+
+        // A <span> just to hold the name text.
+        const nameText = document.createElement("span");
+        nameText.textContent = name;
+
+        // The "Remove" button for this specific person.
+        const removeButton = document.createElement("button");
+        removeButton.textContent = "Remove";
+        removeButton.className = "remove-button";
+        // When this button is clicked, remove this person.
+        removeButton.addEventListener("click", function () {
+          removePerson(index);
+        });
+
+        // Put the name and the button inside the row...
+        row.appendChild(nameText);
+        row.appendChild(removeButton);
+        // ...and put the row inside the list on the page.
+        peopleList.appendChild(row);
+      });
+    }
+
+    // addPerson: adds a new name to our list.
+    function addPerson() {
+      // ".value" is whatever is currently typed in the box.
+      // ".trim()" removes blank spaces from the start and end.
+      const newName = nameInput.value.trim();
+
+      // If the box was empty (or just spaces), do nothing.
+      if (newName === "") {
+        return;
+      }
+
+      // Add the new name to the end of our list.
+      people.push(newName);
+
+      // Save the change, then redraw the screen.
+      savePeople();
+      renderPeople();
+
+      // Clear the text box and put the cursor back in it,
+      // ready for the next name.
+      nameInput.value = "";
+      nameInput.focus();
+    }
+
+    // removePerson: deletes the person at the given position.
+    function removePerson(index) {
+      // ".splice" removes items from a list. Here: remove 1 item
+      // starting at "index".
+      people.splice(index, 1);
+      savePeople();
+      renderPeople();
+    }
+
+    // --- Step D: Connect actions to the buttons. ---
+
+    // When the Add button is clicked, run addPerson.
+    addButton.addEventListener("click", addPerson);
+
+    // Also let the Enter key add a person while typing in the box.
+    nameInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        addPerson();
+      }
+    });
+
+    // --- Step E: Draw the list once when the page first opens. ---
+    renderPeople();
+  </script>
+
+</body>
+</html>

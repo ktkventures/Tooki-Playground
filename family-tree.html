@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  family-tree.html — Draggable character boxes connected by relationship lines.
+  family-tree.html — Connect characters by dragging relationship lines.
 
   This is ONE file that contains three parts working together:
     1. HTML  — the structure of the page (the "bones")
@@ -8,6 +8,13 @@
     3. JavaScript — the behavior inside the <script> tag (the "brain")
 
   To use it: just double-click this file and it opens in your web browser.
+
+  How to use the app:
+    - Add characters with the box at the top.
+    - Drag a character box to move it around.
+    - Click the "+" on a box, choose a relationship, then click another
+      box to connect them.
+    - Click a relationship line to delete that relationship.
 -->
 <html lang="en">
 <head>
@@ -37,49 +44,46 @@
       text-align: center;
     }
 
-    /* Section headings ("Characters", "Relationships"). */
+    /* Section heading. */
     h2 {
       margin-top: 32px;
-      border-bottom: 2px solid #e0dcd5;  /* a thin underline to separate sections */
+      border-bottom: 2px solid #e0dcd5;  /* a thin underline */
       padding-bottom: 6px;
     }
 
-    /* A row that holds inputs and a button side by side. */
+    /* The faint tip line under the heading. */
+    .tip {
+      color: #8a8a8a;
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    /* A row that holds the input and a button side by side. */
     .add-row {
-      display: flex;        /* place items in a row */
-      flex-wrap: wrap;      /* if they don't fit, let them wrap onto the next line */
-      gap: 8px;             /* a small gap between items */
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       margin-bottom: 16px;
     }
 
     /* The text box where you type a name. */
     #name-input {
-      flex: 1;              /* let the text box stretch to fill the space */
+      flex: 1;
       padding: 10px;
       font-size: 16px;
       border: 1px solid #c9c4bd;
-      border-radius: 6px;   /* slightly rounded corners */
-    }
-
-    /* Dropdown menus (the "select" boxes) in the relationship row. */
-    select {
-      flex: 1 1 130px;      /* stretch, but try to be at least 130px wide */
-      padding: 10px;
-      font-size: 15px;
-      border: 1px solid #c9c4bd;
       border-radius: 6px;
-      background-color: white;
     }
 
     /* Shared look for all buttons on the page. */
     button {
-      cursor: pointer;      /* show a clicking hand when hovering */
+      cursor: pointer;
       border: none;
       border-radius: 6px;
       font-size: 16px;
     }
 
-    /* The main green "Add" buttons. */
+    /* The main green "Add" button. */
     .add-button {
       padding: 10px 18px;
       background-color: #5b8a72;  /* calm green */
@@ -88,23 +92,30 @@
 
     /*
       The "tree area" — the canvas where character boxes live.
-      "position: relative" matters: it lets the boxes inside be placed
-      at exact x/y spots measured from this area's top-left corner.
+      "position: relative" lets the boxes inside be placed at exact
+      x/y spots measured from this area's top-left corner.
     */
     #tree-area {
       position: relative;
-      height: 440px;
+      height: 460px;
       border: 2px dashed #c9c4bd;
       border-radius: 8px;
       background-color: #fdfcfb;
-      overflow: hidden;            /* hide anything dragged past the edges */
+      overflow: hidden;
       margin-bottom: 16px;
     }
 
+    /* While connecting, show a cross-hair so it's clear you're aiming. */
+    #tree-area.connecting-mode,
+    #tree-area.connecting-mode .character-box {
+      cursor: crosshair;
+    }
+
     /*
-      The line layer fills the whole tree area and holds the relationship
-      lines. "pointer-events: none" lets clicks and drags pass straight
-      through it to the boxes, so it never gets in the way of dragging.
+      The line layer fills the whole tree area and holds the lines.
+      "pointer-events: none" lets clicks pass through it to the boxes —
+      except for the invisible "hit lines", which switch themselves
+      back on so they can be clicked to delete a relationship.
     */
     #line-layer {
       position: absolute;
@@ -115,31 +126,43 @@
       pointer-events: none;
     }
 
-    /*
-      The three kinds of relationship line. In SVG, "stroke" is the line
-      colour and "stroke-width" is its thickness.
-    */
-
     /* Partner line — bold pink and dotted. */
     .partner-line {
       stroke: #d6418a;
       stroke-width: 3;
-      stroke-dasharray: 2 6;   /* short marks with gaps... */
-      stroke-linecap: round;   /* ...rounded into dots */
+      stroke-dasharray: 2 6;
+      stroke-linecap: round;
     }
 
-    /* Offspring (parent-to-child) line — red. */
+    /* Offspring and sibling lines — red. */
     .offspring-line {
       stroke: #c0392b;
       stroke-width: 2;
-      fill: none;              /* draw only the line, never fill a shape */
+      fill: none;
     }
 
-    /* Sibling arch — red. */
-    .sibling-line {
-      stroke: #c0392b;
-      stroke-width: 2;
-      fill: none;
+    /* The line that follows the cursor while you connect two boxes. */
+    .temp-line {
+      stroke-width: 3;
+      stroke-dasharray: 4 4;
+    }
+
+    /*
+      An invisible, extra-thick line sitting on top of each real line.
+      It is see-through but clickable, giving you an easy target for
+      deleting a relationship. "pointer-events: stroke" switches
+      clicking back on just for this shape.
+    */
+    .hit-line {
+      stroke: transparent;
+      stroke-width: 14;
+      pointer-events: stroke;
+      cursor: pointer;
+    }
+
+    /* While connecting, ignore the hit lines so clicks reach the boxes. */
+    #line-layer.connecting .hit-line {
+      pointer-events: none;
     }
 
     /*
@@ -149,7 +172,7 @@
     .character-box {
       position: absolute;
       display: flex;
-      flex-direction: column;      /* name on top, buttons below */
+      flex-direction: column;
       gap: 6px;
       min-width: 110px;
       background-color: white;
@@ -157,34 +180,49 @@
       border-radius: 8px;
       padding: 10px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-      cursor: grab;                /* show a "grab" hand to hint dragging */
-      user-select: none;           /* don't select text while dragging */
-      touch-action: none;          /* on a touchscreen, drag instead of scroll */
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
     }
 
-    /* While a box is being dragged, lift it a little with a bigger shadow. */
+    /* While a box is being dragged, lift it with a bigger shadow. */
     .character-box.dragging {
       cursor: grabbing;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
     }
 
-    /* The character's name shown at the top of the box. */
+    /* The character's name shown in the box. */
     .character-name {
       font-weight: bold;
       text-align: center;
     }
 
-    /* The little group that holds the Edit and x buttons together. */
+    /* The round green "+" handle in the corner of each box. */
+    .connect-handle {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border-radius: 50%;        /* a full circle */
+      background-color: #5b8a72;
+      color: white;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* The group holding the Edit and x buttons. */
     .button-group {
       display: flex;
       justify-content: center;
       gap: 6px;
     }
 
-    /* The "Edit" button on each character's box. */
+    /* The "Edit" button on each box. */
     .edit-button {
       padding: 5px 10px;
-      background-color: #4a6d8c;  /* calm blue */
+      background-color: #4a6d8c;
       color: white;
       font-size: 13px;
     }
@@ -192,57 +230,71 @@
     /* The "Save" button shown while editing a name. */
     .save-button {
       padding: 5px 10px;
-      background-color: #5b8a72;  /* calm green */
+      background-color: #5b8a72;
       color: white;
       font-size: 13px;
     }
 
-    /* The text box shown while editing a name inside a box. */
+    /* The text box shown while editing a name. */
     .edit-input {
       width: 100%;
-      box-sizing: border-box;     /* include padding in the width */
+      box-sizing: border-box;
       padding: 6px;
       font-size: 15px;
       border: 1px solid #c9c4bd;
       border-radius: 6px;
     }
 
-    /* The small "x" button that removes a character or relationship. */
+    /* The small "x" button that removes a character. */
     .remove-button {
-      /* A fixed width and height make it a small, even square. */
       width: 24px;
       height: 24px;
       padding: 0;
-      background-color: #b5544c;  /* muted red */
+      background-color: #b5544c;
       color: white;
       font-size: 14px;
-      line-height: 1;             /* keeps the "x" centered vertically */
+      line-height: 1;
     }
 
-    /* "ul" is a list. We remove the default bullet points. */
-    ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    /* Each relationship sits in its own "li" (list item) row. */
-    li {
-      display: flex;
-      justify-content: space-between;  /* text on the left, x on the right */
-      align-items: center;
-      gap: 8px;
-      background-color: white;
-      border: 1px solid #e0dcd5;
-      border-radius: 6px;
-      padding: 10px 14px;
-      margin-bottom: 8px;
-    }
-
-    /* A friendly message shown when a list or the tree area is empty. */
+    /* A friendly message shown when the tree area is empty. */
     .empty-message {
       text-align: center;
       color: #8a8a8a;
       font-style: italic;
+    }
+
+    /*
+      The little pop-up menu for choosing a relationship type.
+      It is hidden until the "+" handle is clicked.
+    */
+    .type-menu {
+      position: absolute;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px;
+      background-color: white;
+      border: 1px solid #c9c4bd;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    }
+
+    /* The "hidden" class simply hides whatever it is put on. */
+    .hidden {
+      display: none;
+    }
+
+    .type-menu button {
+      padding: 8px 14px;
+      background-color: #f0ede8;
+      color: #2b2b2b;
+      font-size: 14px;
+      text-align: left;
+    }
+
+    .type-menu button:hover {
+      background-color: #e3ded6;
     }
   </style>
 </head>
@@ -255,45 +307,27 @@
 
   <h1>Family Tree Creator</h1>
 
-  <!-- ===== CHARACTERS SECTION ===== -->
   <h2>Characters</h2>
+  <p class="tip">
+    Tip: click the <strong>+</strong> on a box, pick a relationship, then
+    click another box to connect them. Click a line to delete it.
+  </p>
 
   <!-- The row with the text box and the Add button. -->
   <div class="add-row">
-    <!--
-      "id" gives an element a unique name so the JavaScript can find it.
-      "placeholder" is the faint hint text shown when the box is empty.
-    -->
     <input type="text" id="name-input" placeholder="Type a character's name...">
     <button id="add-button" class="add-button">Add</button>
   </div>
 
   <!--
-    The tree area. Character boxes are placed inside here by JavaScript.
-    The <svg> "line layer" holds the relationship lines, drawn underneath
-    the boxes. SVG is a kind of element built for drawing shapes and lines.
+    The tree area. Character boxes and the line layer go inside here.
   -->
   <div id="tree-area">
     <svg id="line-layer"></svg>
   </div>
 
-  <!-- ===== RELATIONSHIPS SECTION ===== -->
-  <h2>Relationships</h2>
-
-  <!--
-    The row for adding a relationship: two character dropdowns with a
-    relationship-type dropdown in the middle. JavaScript fills the
-    dropdowns with your characters and the relationship choices.
-  -->
-  <div class="add-row">
-    <select id="character-a"></select>
-    <select id="relationship-type"></select>
-    <select id="character-b"></select>
-    <button id="add-relationship-button" class="add-button">Add</button>
-  </div>
-
-  <!-- This list is where each relationship appears. -->
-  <ul id="relationships-list"></ul>
+  <!-- The relationship-type pop-up menu. JavaScript fills and positions it. -->
+  <div id="type-menu" class="type-menu hidden"></div>
 
 
   <script>
@@ -304,62 +338,57 @@
     */
 
     // --- Step A: Find the parts of the page we need to work with. ---
-    // document.getElementById finds an element by the "id" we gave it.
-    const nameInput            = document.getElementById("name-input");
-    const addButton            = document.getElementById("add-button");
-    const treeArea             = document.getElementById("tree-area");
-    const lineLayer            = document.getElementById("line-layer");
-
-    const characterASelect     = document.getElementById("character-a");
-    const characterBSelect     = document.getElementById("character-b");
-    const typeSelect           = document.getElementById("relationship-type");
-    const addRelationshipBtn   = document.getElementById("add-relationship-button");
-    const relationshipsList    = document.getElementById("relationships-list");
+    const nameInput = document.getElementById("name-input");
+    const addButton = document.getElementById("add-button");
+    const treeArea  = document.getElementById("tree-area");
+    const lineLayer = document.getElementById("line-layer");
+    const typeMenu  = document.getElementById("type-menu");
 
     // The "drawers" in the browser's storage where we keep each kind of data.
     const CHARACTERS_KEY    = "familyTreeCharacters";
     const RELATIONSHIPS_KEY = "familyTreeRelationships";
 
-    // The kinds of relationship you can pick. Each one has:
-    //   value — a short code we store
-    //   label — the friendly wording shown on screen
-    // Keeping these in one list means we can reuse it in two places:
-    // to fill the dropdown AND to write the relationship out in words.
-    const RELATIONSHIP_TYPES = [
-      { value: "parent",  label: "is the parent of" },
-      { value: "child",   label: "is a child of" },
-      { value: "partner", label: "is a partner of" },
-      { value: "sibling", label: "is a sibling of" }
+    // The web address ("namespace") that SVG shapes must be created with.
+    const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+    // The relationship types you can start from a box's "+" menu.
+    // (Siblings are NOT here — the app works those out automatically
+    // from shared parents.)
+    const CONNECT_TYPES = [
+      { value: "parent",  label: "Parent of…" },
+      { value: "child",   label: "Child of…" },
+      { value: "partner", label: "Partner of…" }
     ];
 
     // --- Step B: Our data. ---
-    // "characters" is a list where each character is a small bundle:
-    //   { id, name, x, y }
-    // id   — a permanent, unique number (like a membership number)
-    // name — the character's name (this is the only part you can edit)
-    // x, y — where the box sits in the tree area: x is across, y is down,
-    //         both measured in pixels from the area's top-left corner.
+    // "characters" — each one is a bundle: { id, name, x, y }.
     let characters = loadCharacters();
 
-    // "relationships" is a list where each connection is a bundle:
-    //   { id, fromId, toId, type }
-    // fromId and toId are the IDs of the two characters being connected.
+    // "relationships" — each one is a bundle: { id, fromId, toId, type }.
+    // type is "parent", "child", or "partner".
     let relationships = loadRelationships();
 
-    // "nextId" is the next unused number. Every new character or
-    // relationship takes this number, then we add 1 so the next one
-    // is different.
+    // "nextId" — the next unused ID number for a new character/relationship.
     let nextId = computeNextId();
 
-    // "editingId" remembers which character (by ID) is currently being
-    // edited. It is null when nobody is being edited.
+    // "editingId" — the ID of the character whose name is being edited.
     let editingId = null;
 
-    // "boxElements" connects a character's ID to its box element on the
-    // page, so we can quickly find a box when drawing relationship lines.
+    // "boxElements" — connects a character's ID to its box on the page.
     let boxElements = {};
 
-    // --- Step C: Functions (reusable instructions). ---
+    // "connecting" — while you are drawing a new relationship line, this
+    // holds { fromId, type, originX, originY }. It is null the rest of
+    // the time.
+    let connecting = null;
+
+    // "tempLine" — the SVG line that follows the cursor while connecting.
+    let tempLine = null;
+
+    // "menuForId" — which character's "+" opened the type menu.
+    let menuForId = null;
+
+    // --- Step C: Small helper functions. ---
 
     // makeId: hands out the next unused ID number.
     function makeId() {
@@ -368,8 +397,7 @@
       return id;
     }
 
-    // computeNextId: works out a safe starting point for new IDs by
-    // finding the highest ID already in use and adding 1.
+    // computeNextId: a safe starting ID — one more than the highest used.
     function computeNextId() {
       let highest = 0;
       characters.forEach(function (character) {
@@ -381,150 +409,38 @@
       return highest + 1;
     }
 
-    // findCharacter: looks up a character by their ID. Returns the
-    // character bundle, or undefined if no one matches.
+    // findCharacter: looks up a character by ID.
     function findCharacter(id) {
       return characters.find(function (character) {
         return character.id === id;
       });
     }
 
-    // loadCharacters: gets the saved characters out of the browser's storage.
+    // loadCharacters / loadRelationships: read saved data out of storage.
     function loadCharacters() {
       const savedText = localStorage.getItem(CHARACTERS_KEY);
-      if (!savedText) {
-        return [];  // nothing saved yet — start with an empty list
-      }
-      // JSON.parse turns the stored text back into a real list.
-      return JSON.parse(savedText);
+      return savedText ? JSON.parse(savedText) : [];
     }
-
-    // loadRelationships: gets the saved relationships out of storage.
     function loadRelationships() {
       const savedText = localStorage.getItem(RELATIONSHIPS_KEY);
-      if (!savedText) {
-        return [];
-      }
-      return JSON.parse(savedText);
+      return savedText ? JSON.parse(savedText) : [];
     }
 
-    // saveCharacters: writes the characters list into the browser's storage.
+    // saveCharacters / saveRelationships: write data into storage as text.
     function saveCharacters() {
-      // JSON.stringify turns our list into text so it can be stored.
       localStorage.setItem(CHARACTERS_KEY, JSON.stringify(characters));
     }
-
-    // saveRelationships: writes the relationships list into storage.
     function saveRelationships() {
       localStorage.setItem(RELATIONSHIPS_KEY, JSON.stringify(relationships));
     }
 
-    // nextStartingSpot: picks a default x/y for a brand-new character.
-    // We nudge each new box a little down-and-right from the last so
-    // they don't all land in an exact stack.
+    // nextStartingSpot: a default x/y for a brand-new character box,
+    // nudged a little each time so new boxes don't land in an exact stack.
     function nextStartingSpot() {
       const step = 26;
-      const slot = characters.length % 6;  // cycle through 6 staggered spots
+      const slot = characters.length % 6;
       return { x: 20 + slot * step, y: 20 + slot * step };
     }
-
-    // ----- Drawing the CHARACTER BOXES -----
-
-    // renderCharacters: redraws all the character boxes in the tree area.
-    function renderCharacters() {
-      // Remove the old boxes (and any "empty" message), but leave the
-      // line layer in place so we don't have to rebuild it each time.
-      const oldItems = treeArea.querySelectorAll(".character-box, .empty-message");
-      oldItems.forEach(function (item) { item.remove(); });
-
-      // Start the ID-to-box lookup fresh; we fill it in as boxes are built.
-      boxElements = {};
-
-      if (characters.length === 0) {
-        const message = document.createElement("p");
-        message.textContent = "No characters yet — add one above, then drag it around.";
-        message.className = "empty-message";
-        treeArea.appendChild(message);
-        renderLines();  // no boxes to connect — this just clears old lines
-        return;
-      }
-
-      characters.forEach(function (character) {
-        const box = document.createElement("div");
-        box.className = "character-box";
-        // Place the box at its saved spot.
-        box.style.left = character.x + "px";
-        box.style.top  = character.y + "px";
-
-        // If THIS character is the one being edited, show a text box
-        // and a Save button instead of the name and the usual buttons.
-        if (character.id === editingId) {
-          const input = document.createElement("input");
-          input.type = "text";
-          input.className = "edit-input";
-          input.value = character.name;
-
-          const saveButton = document.createElement("button");
-          saveButton.textContent = "Save";
-          saveButton.className = "save-button";
-          saveButton.addEventListener("click", function () {
-            saveEditedName(character.id, input.value);
-          });
-
-          // Pressing Enter while typing also saves.
-          input.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-              saveEditedName(character.id, input.value);
-            }
-          });
-
-          box.appendChild(input);
-          box.appendChild(saveButton);
-        } else {
-          // Normal display: the name, then an Edit button and an x button.
-          const nameText = document.createElement("div");
-          nameText.className = "character-name";
-          nameText.textContent = character.name;
-
-          const editButton = document.createElement("button");
-          editButton.textContent = "Edit";
-          editButton.className = "edit-button";
-          editButton.addEventListener("click", function () {
-            editingId = character.id;   // mark this character as being edited
-            renderCharacters();         // redraw so the text box appears
-          });
-
-          const removeButton = document.createElement("button");
-          removeButton.textContent = "x";
-          removeButton.className = "remove-button";
-          removeButton.title = "Remove";
-          removeButton.addEventListener("click", function () {
-            removeCharacter(character.id);
-          });
-
-          const buttonGroup = document.createElement("div");
-          buttonGroup.className = "button-group";
-          buttonGroup.appendChild(editButton);
-          buttonGroup.appendChild(removeButton);
-
-          box.appendChild(nameText);
-          box.appendChild(buttonGroup);
-        }
-
-        // Make this box draggable, then add it to the tree area.
-        makeDraggable(box, character);
-        treeArea.appendChild(box);
-
-        // Remember this box so we can find it when drawing lines.
-        boxElements[character.id] = box;
-      });
-
-      // Every box now exists and has a size, so we can draw the lines.
-      renderLines();
-    }
-
-    // The web address ("namespace") that SVG shapes must be created with.
-    const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
     // svgLine: builds one straight SVG line from point 1 to point 2.
     function svgLine(x1, y1, x2, y2, className) {
@@ -537,37 +453,18 @@
       return line;
     }
 
-    // svgPolyline: builds an SVG shape that follows a series of points,
-    // drawing a straight segment from each point to the next. We use it
-    // for the square arches (up, across, then down).
-    function svgPolyline(points, className) {
-      const shape = document.createElementNS(SVG_NAMESPACE, "polyline");
-      // The "points" attribute is text like "10,20 10,5 60,5 60,20".
-      let pointsText = "";
-      points.forEach(function (point) {
-        pointsText += point[0] + "," + point[1] + " ";
-      });
-      shape.setAttribute("points", pointsText.trim());
-      shape.setAttribute("class", className);
-      return shape;
-    }
-
-    // coupleKey: turns two character IDs into one text label, smaller
-    // number first — e.g. IDs 5 and 2 both become "2-5". This gives a
-    // partnered couple a single, consistent name we can look things up by.
+    // coupleKey: turns two IDs into one consistent text label, smaller
+    // number first — so a couple has a single name to look things up by.
     function coupleKey(id1, id2) {
-      const low  = Math.min(id1, id2);
-      const high = Math.max(id1, id2);
-      return low + "-" + high;
+      return Math.min(id1, id2) + "-" + Math.max(id1, id2);
     }
 
-    // boxGeometry: works out the key points of a character's box —
-    // its centre, and the middle of its top and bottom edges.
+    // boxGeometry: the key points of a character's box on screen.
     function boxGeometry(id) {
       const character = findCharacter(id);
       const box = boxElements[id];
       if (!character || !box) {
-        return null;  // the box isn't on screen — caller should skip it
+        return null;
       }
       const width  = box.offsetWidth;
       const height = box.offsetHeight;
@@ -582,8 +479,7 @@
     }
 
     // getParentChildLinks: collects every parent-to-child connection.
-    // A "parent" relationship reads from -> to; a "child" relationship
-    // reads to -> from. Either way, the result is { parentId, childId }.
+    // A "parent" relationship reads from -> to; a "child" reads to -> from.
     function getParentChildLinks() {
       const links = [];
       relationships.forEach(function (rel) {
@@ -605,39 +501,181 @@
       });
     }
 
-    // parentsOf: lists the unique IDs of a child's parents.
-    function parentsOf(childId, links) {
-      const parents = [];
-      links.forEach(function (link) {
-        if (link.childId === childId && parents.indexOf(link.parentId) === -1) {
-          parents.push(link.parentId);
+    // --- Step D: Drawing the character boxes. ---
+
+    // renderCharacters: redraws all the character boxes in the tree area.
+    function renderCharacters() {
+      // Remove the old boxes (and any "empty" message), but leave the
+      // line layer in place.
+      const oldItems = treeArea.querySelectorAll(".character-box, .empty-message");
+      oldItems.forEach(function (item) { item.remove(); });
+
+      boxElements = {};  // start the ID-to-box lookup fresh
+
+      if (characters.length === 0) {
+        const message = document.createElement("p");
+        message.textContent = "No characters yet — add one above to begin.";
+        message.className = "empty-message";
+        treeArea.appendChild(message);
+        renderLines();
+        return;
+      }
+
+      characters.forEach(function (character) {
+        const box = document.createElement("div");
+        box.className = "character-box";
+        box.style.left = character.x + "px";
+        box.style.top  = character.y + "px";
+
+        if (character.id === editingId) {
+          // Edit mode: a text box and a Save button.
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "edit-input";
+          input.value = character.name;
+
+          const saveButton = document.createElement("button");
+          saveButton.textContent = "Save";
+          saveButton.className = "save-button";
+          saveButton.addEventListener("click", function (event) {
+            event.stopPropagation();
+            saveEditedName(character.id, input.value);
+          });
+          input.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+              saveEditedName(character.id, input.value);
+            }
+          });
+
+          box.appendChild(input);
+          box.appendChild(saveButton);
+        } else {
+          // Normal display: the name, plus Edit and x buttons.
+          const nameText = document.createElement("div");
+          nameText.className = "character-name";
+          nameText.textContent = character.name;
+
+          const editButton = document.createElement("button");
+          editButton.textContent = "Edit";
+          editButton.className = "edit-button";
+          editButton.addEventListener("click", function (event) {
+            event.stopPropagation();         // don't let the box react too
+            if (connecting) { return; }
+            editingId = character.id;
+            renderCharacters();
+          });
+
+          const removeButton = document.createElement("button");
+          removeButton.textContent = "x";
+          removeButton.className = "remove-button";
+          removeButton.title = "Remove";
+          removeButton.addEventListener("click", function (event) {
+            event.stopPropagation();
+            if (connecting) { return; }
+            removeCharacter(character.id);
+          });
+
+          const buttonGroup = document.createElement("div");
+          buttonGroup.className = "button-group";
+          buttonGroup.appendChild(editButton);
+          buttonGroup.appendChild(removeButton);
+
+          // The round "+" handle that starts a new relationship.
+          const connectHandle = document.createElement("button");
+          connectHandle.textContent = "+";
+          connectHandle.className = "connect-handle";
+          connectHandle.title = "Add a relationship";
+          connectHandle.addEventListener("click", function (event) {
+            event.stopPropagation();  // don't bubble to the document/box
+            if (connecting) { return; }
+            openTypeMenu(character.id, connectHandle);
+          });
+
+          box.appendChild(connectHandle);
+          box.appendChild(nameText);
+          box.appendChild(buttonGroup);
         }
+
+        // While connecting, a click on a box finishes the connection.
+        box.addEventListener("click", function () {
+          if (connecting) {
+            completeConnection(character.id);
+          }
+        });
+
+        makeDraggable(box, character);
+        treeArea.appendChild(box);
+        boxElements[character.id] = box;
       });
-      return parents;
+
+      renderLines();
     }
+
+    // makeDraggable: lets a box be dragged around the tree area.
+    function makeDraggable(box, character) {
+      box.addEventListener("pointerdown", function (event) {
+        // While connecting a relationship, boxes don't drag — a click
+        // on them finishes the connection instead.
+        if (connecting) { return; }
+
+        // Don't start a drag if a button or the edit box was pressed.
+        if (event.target.closest("button") || event.target.closest("input")) {
+          return;
+        }
+
+        box.setPointerCapture(event.pointerId);
+        box.classList.add("dragging");
+
+        const areaRect = treeArea.getBoundingClientRect();
+        const grabOffsetX = (event.clientX - areaRect.left) - character.x;
+        const grabOffsetY = (event.clientY - areaRect.top)  - character.y;
+
+        function onMove(moveEvent) {
+          let newX = (moveEvent.clientX - areaRect.left) - grabOffsetX;
+          let newY = (moveEvent.clientY - areaRect.top)  - grabOffsetY;
+
+          const maxX = treeArea.clientWidth  - box.offsetWidth;
+          const maxY = treeArea.clientHeight - box.offsetHeight;
+          newX = Math.max(0, Math.min(newX, maxX));
+          newY = Math.max(0, Math.min(newY, maxY));
+
+          character.x = newX;
+          character.y = newY;
+          box.style.left = newX + "px";
+          box.style.top  = newY + "px";
+
+          renderLines();  // lines follow the box as it moves
+        }
+
+        function onUp() {
+          box.classList.remove("dragging");
+          box.removeEventListener("pointermove", onMove);
+          box.removeEventListener("pointerup", onUp);
+          saveCharacters();
+        }
+
+        box.addEventListener("pointermove", onMove);
+        box.addEventListener("pointerup", onUp);
+      });
+    }
+
+    // --- Step E: Drawing the relationship lines. ---
 
     // renderLines: draws every relationship line. Called whenever boxes
     // move or relationships change.
-    //
-    // It works in four stages, matching the four kinds of line:
-    //   1. Partner lines  — pink dotted, box centre to box centre
-    //   2 & 3. Offspring  — green, dropping from a couple's midpoint
-    //   4. Sibling arches — grey squared arch from box top to box top
     function renderLines() {
-      lineLayer.innerHTML = "";  // clear the old lines first
+      lineLayer.innerHTML = "";
 
       const links = getParentChildLinks();
 
-      // ----- Stage 1: Partner lines -----
-      // While drawing them, remember each couple's midpoint (the spot
-      // halfway along the line) so offspring lines can start from there.
-      const coupleMidpoints = {};  // coupleKey -> { x, y }
+      // ----- Partner lines (pink dotted) -----
+      // Remember each couple's midpoint so offspring lines can start there.
+      const coupleMidpoints = {};
       relationships.forEach(function (rel) {
         if (rel.type !== "partner") { return; }
         const a = boxGeometry(rel.fromId);
         const b = boxGeometry(rel.toId);
         if (!a || !b) { return; }
-
         lineLayer.appendChild(
           svgLine(a.centerX, a.centerY, b.centerX, b.centerY, "partner-line")
         );
@@ -647,205 +685,249 @@
         };
       });
 
-      // ----- Stages 2 & 3: Offspring lines -----
-      // Sort every child into one of two groups:
-      //   coupleChildren — children whose two parents are a partnered
-      //                    couple (these get the fancy centred arch)
-      //   individualLinks — everyone else (these get a plain green line)
-      const coupleChildren  = {};  // coupleKey -> [childId, ...]
-      const individualLinks = [];  // [{ parentId, childId }, ...]
-
-      // Build the list of every child mentioned, with no duplicates.
-      const childIds = [];
+      // ----- Offspring + sibling lines (red) -----
+      // First, for each child, gather the IDs of its parents.
+      const parentsByChild = {};
       links.forEach(function (link) {
-        if (childIds.indexOf(link.childId) === -1) {
-          childIds.push(link.childId);
+        if (!parentsByChild[link.childId]) {
+          parentsByChild[link.childId] = [];
+        }
+        if (parentsByChild[link.childId].indexOf(link.parentId) === -1) {
+          parentsByChild[link.childId].push(link.parentId);
         }
       });
 
-      childIds.forEach(function (childId) {
-        const parents = parentsOf(childId, links);
-        if (parents.length === 2 && arePartners(parents[0], parents[1])) {
-          // Two parents who are a couple — group this child under them.
-          const key = coupleKey(parents[0], parents[1]);
-          if (!coupleChildren[key]) { coupleChildren[key] = []; }
-          coupleChildren[key].push(childId);
-        } else {
-          // Fallback: a plain line from each parent to this child.
-          parents.forEach(function (parentId) {
-            individualLinks.push({ parentId: parentId, childId: childId });
-          });
+      // Then group children who have the EXACT same set of parents.
+      // Children in the same group are siblings — that is how the app
+      // works out siblings without you entering them.
+      const groups = {};
+      Object.keys(parentsByChild).forEach(function (childIdText) {
+        const childId = Number(childIdText);
+        const parents = parentsByChild[childId].slice().sort(function (a, b) {
+          return a - b;
+        });
+        const key = parents.join("-");
+        if (!groups[key]) {
+          groups[key] = { parents: parents, children: [] };
         }
+        groups[key].children.push(childId);
       });
 
-      // Draw each couple's offspring arch.
-      Object.keys(coupleChildren).forEach(function (key) {
-        const midpoint = coupleMidpoints[key];
-        if (!midpoint) { return; }  // couple's partner line isn't drawable
-        const kids = coupleChildren[key];
+      // Draw each group.
+      Object.keys(groups).forEach(function (key) {
+        const parents  = groups[key].parents;
+        const children = groups[key].children;
 
-        if (kids.length === 1) {
-          // One child: a single green line from the midpoint to its top.
-          const kid = boxGeometry(kids[0]);
-          if (!kid) { return; }
-          lineLayer.appendChild(
-            svgLine(midpoint.x, midpoint.y, kid.topX, kid.topY, "offspring-line")
-          );
+        // Work out the "origin" — the point the parent line comes from.
+        const origin = parentOrigin(parents, coupleMidpoints);
+        if (!origin) { return; }
+
+        if (children.length === 1) {
+          // One child: a single red line to its box top.
+          const kid = boxGeometry(children[0]);
+          if (kid) {
+            lineLayer.appendChild(
+              svgLine(origin.x, origin.y, kid.topX, kid.topY, "offspring-line")
+            );
+          }
           return;
         }
 
-        // Several children: build the "square arch".
-        // We need three numbers: how high to put the horizontal bar,
-        // and where its left and right ends go.
-        //
-        // The bar must always reach the spot where the parent line
-        // drops down (midpoint.x), so we start both ends there. Then we
-        // stretch each end out just far enough to cover every child —
-        // and no further — so there is never a leftover tail.
+        // Several children: a "square arch" connecting the siblings.
+        // The bar starts at the origin's x so the parent drop reaches it,
+        // then stretches just far enough to cover every child.
         let highestTop = Infinity;
-        let barLeft    = midpoint.x;
-        let barRight   = midpoint.x;
-        kids.forEach(function (kidId) {
-          const kid = boxGeometry(kidId);
+        let barLeft    = origin.x;
+        let barRight   = origin.x;
+        children.forEach(function (childId) {
+          const kid = boxGeometry(childId);
           if (!kid) { return; }
           if (kid.topY < highestTop) { highestTop = kid.topY; }
           if (kid.topX < barLeft)    { barLeft    = kid.topX; }
           if (kid.topX > barRight)   { barRight   = kid.topX; }
         });
-        if (highestTop === Infinity) { return; }  // no drawable children
+        if (highestTop === Infinity) { return; }
 
-        // The bar sits a little above the highest child.
         const barY = highestTop - 28;
-
-        // Green line dropping from the couple's midpoint down to the bar.
+        // Drop from the parents down to the bar.
         lineLayer.appendChild(
-          svgLine(midpoint.x, midpoint.y, midpoint.x, barY, "offspring-line")
+          svgLine(origin.x, origin.y, origin.x, barY, "offspring-line")
         );
-        // The horizontal bar.
+        // The horizontal bar joining the siblings.
         lineLayer.appendChild(
           svgLine(barLeft, barY, barRight, barY, "offspring-line")
         );
-        // A short drop from the bar down to the top of each child.
-        kids.forEach(function (kidId) {
-          const kid = boxGeometry(kidId);
-          if (!kid) { return; }
-          lineLayer.appendChild(
-            svgLine(kid.topX, barY, kid.topX, kid.topY, "offspring-line")
-          );
+        // A short drop from the bar down to each child's box top.
+        children.forEach(function (childId) {
+          const kid = boxGeometry(childId);
+          if (kid) {
+            lineLayer.appendChild(
+              svgLine(kid.topX, barY, kid.topX, kid.topY, "offspring-line")
+            );
+          }
         });
       });
 
-      // Plain green lines for children not under a partnered couple.
-      individualLinks.forEach(function (link) {
-        const parent = boxGeometry(link.parentId);
-        const child  = boxGeometry(link.childId);
-        if (!parent || !child) { return; }
-        lineLayer.appendChild(
-          svgLine(parent.bottomX, parent.bottomY, child.topX, child.topY,
-                  "offspring-line")
-        );
-      });
-
-      // ----- Stage 4: Sibling arches -----
-      // A squared arch: up from one box's top, across, down to the other.
+      // ----- Hit lines (invisible, for deleting) -----
+      // One clickable see-through line per relationship.
       relationships.forEach(function (rel) {
-        if (rel.type !== "sibling") { return; }
         const a = boxGeometry(rel.fromId);
         const b = boxGeometry(rel.toId);
         if (!a || !b) { return; }
-
-        // The arch's flat top sits a little above the higher box.
-        const archY = Math.min(a.topY, b.topY) - 26;
-        lineLayer.appendChild(svgPolyline([
-          [a.topX, a.topY],   // start at box A's top
-          [a.topX, archY],    // straight up
-          [b.topX, archY],    // across
-          [b.topX, b.topY]    // straight down to box B's top
-        ], "sibling-line"));
+        const hit = svgLine(a.centerX, a.centerY, b.centerX, b.centerY, "hit-line");
+        hit.addEventListener("click", function () {
+          if (connecting) { return; }
+          if (confirm("Remove this relationship?")) {
+            removeRelationship(rel.id);
+          }
+        });
+        lineLayer.appendChild(hit);
       });
     }
 
-    // makeDraggable: lets a box be dragged around the tree area.
-    //
-    // Dragging is three moments the computer watches for:
-    //   1. pointerdown — you press on the box
-    //   2. pointermove — you move while still pressing
-    //   3. pointerup   — you let go
-    // "pointer" events cover both a mouse and a finger on a touchscreen.
-    function makeDraggable(box, character) {
-      box.addEventListener("pointerdown", function (event) {
-        // If you pressed a button or the edit text box, don't start a
-        // drag — let that button or text box do its own job.
-        if (event.target.closest("button") || event.target.closest("input")) {
-          return;
+    // parentOrigin: the point a group of children's line should come from.
+    function parentOrigin(parents, coupleMidpoints) {
+      if (parents.length === 2) {
+        // Two parents who are partners: start at their partner-line midpoint.
+        if (arePartners(parents[0], parents[1])) {
+          const midpoint = coupleMidpoints[coupleKey(parents[0], parents[1])];
+          if (midpoint) { return midpoint; }
         }
-
-        // Capture the pointer so we keep getting move/up events even if
-        // the pointer briefly slips off the box.
-        box.setPointerCapture(event.pointerId);
-        box.classList.add("dragging");
-
-        // The tree area's position on screen. We measure pointer
-        // positions relative to this corner.
-        const areaRect = treeArea.getBoundingClientRect();
-
-        // How far inside the box you grabbed it. Subtracting this later
-        // stops the box from "jumping" so its corner meets your cursor.
-        const grabOffsetX = (event.clientX - areaRect.left) - character.x;
-        const grabOffsetY = (event.clientY - areaRect.top)  - character.y;
-
-        // onMove runs every time the pointer moves during the drag.
-        function onMove(moveEvent) {
-          // Where the box's top-left corner should now be.
-          let newX = (moveEvent.clientX - areaRect.left) - grabOffsetX;
-          let newY = (moveEvent.clientY - areaRect.top)  - grabOffsetY;
-
-          // Keep the box fully inside the tree area.
-          // Math.max stops it going past the left/top edge;
-          // Math.min stops it going past the right/bottom edge.
-          const maxX = treeArea.clientWidth  - box.offsetWidth;
-          const maxY = treeArea.clientHeight - box.offsetHeight;
-          newX = Math.max(0, Math.min(newX, maxX));
-          newY = Math.max(0, Math.min(newY, maxY));
-
-          // Update both the data and what's on screen.
-          character.x = newX;
-          character.y = newY;
-          box.style.left = newX + "px";
-          box.style.top  = newY + "px";
-
-          // Redraw the lines so they follow the box as it moves.
-          renderLines();
+        // Otherwise: the point halfway between the two parent boxes.
+        const p1 = boxGeometry(parents[0]);
+        const p2 = boxGeometry(parents[1]);
+        if (p1 && p2) {
+          return { x: (p1.centerX + p2.centerX) / 2,
+                   y: (p1.centerY + p2.centerY) / 2 };
         }
+        return null;
+      }
+      if (parents.length === 1) {
+        // One parent: start at the bottom-centre of that box.
+        const p = boxGeometry(parents[0]);
+        return p ? { x: p.bottomX, y: p.bottomY } : null;
+      }
+      // Three or more parents: the average of all their centres.
+      let sumX = 0, sumY = 0, count = 0;
+      parents.forEach(function (parentId) {
+        const p = boxGeometry(parentId);
+        if (p) { sumX += p.centerX; sumY += p.centerY; count += 1; }
+      });
+      return count > 0 ? { x: sumX / count, y: sumY / count } : null;
+    }
 
-        // onUp runs once when you let go.
-        function onUp() {
-          box.classList.remove("dragging");
-          box.removeEventListener("pointermove", onMove);
-          box.removeEventListener("pointerup", onUp);
-          saveCharacters();  // remember the new position
-        }
+    // --- Step F: The relationship-type pop-up menu. ---
 
-        box.addEventListener("pointermove", onMove);
-        box.addEventListener("pointerup", onUp);
+    // buildTypeMenu: fills the menu with one button per relationship type.
+    function buildTypeMenu() {
+      CONNECT_TYPES.forEach(function (type) {
+        const button = document.createElement("button");
+        button.textContent = type.label;
+        button.addEventListener("click", function () {
+          startConnecting(type.value);
+        });
+        typeMenu.appendChild(button);
       });
     }
 
-    // addCharacter: adds a new character to our list.
-    function addCharacter() {
-      const newName = nameInput.value.trim();  // .trim() removes blank spaces
-      if (newName === "") {
-        return;  // nothing typed — do nothing
+    // openTypeMenu: shows the menu just below a box's "+" handle.
+    function openTypeMenu(characterId, handleButton) {
+      menuForId = characterId;
+      // getBoundingClientRect gives the handle's spot on screen.
+      const rect = handleButton.getBoundingClientRect();
+      typeMenu.style.left = (window.scrollX + rect.left) + "px";
+      typeMenu.style.top  = (window.scrollY + rect.bottom + 4) + "px";
+      typeMenu.classList.remove("hidden");
+    }
+
+    // closeTypeMenu: hides the menu again.
+    function closeTypeMenu() {
+      typeMenu.classList.add("hidden");
+      menuForId = null;
+    }
+
+    // --- Step G: Connecting two characters. ---
+
+    // startConnecting: begins drawing a relationship line of the given
+    // type from the character whose "+" opened the menu.
+    function startConnecting(type) {
+      const fromId = menuForId;
+      closeTypeMenu();
+
+      const from = boxGeometry(fromId);
+      if (!from) { return; }
+
+      connecting = { fromId: fromId, type: type };
+      lineLayer.classList.add("connecting");
+      treeArea.classList.add("connecting-mode");
+
+      // The temporary line starts and ends at the source box centre;
+      // its end will follow the cursor.
+      tempLine = svgLine(from.centerX, from.centerY,
+                         from.centerX, from.centerY, "temp-line");
+      tempLine.setAttribute("stroke", type === "partner" ? "#d6418a" : "#c0392b");
+      lineLayer.appendChild(tempLine);
+    }
+
+    // cancelConnecting: stops connecting without making a relationship.
+    function cancelConnecting() {
+      if (!connecting) { return; }
+      connecting = null;
+      lineLayer.classList.remove("connecting");
+      treeArea.classList.remove("connecting-mode");
+      if (tempLine) {
+        tempLine.remove();
+        tempLine = null;
+      }
+    }
+
+    // completeConnection: finishes a relationship onto the target box.
+    function completeConnection(targetId) {
+      const type   = connecting.type;
+      const fromId = connecting.fromId;
+      cancelConnecting();
+
+      if (targetId === fromId) {
+        return;  // a character can't have a relationship with themselves
       }
 
-      // Each new character gets a fresh ID, the typed name, and a
-      // starting spot in the tree area.
+      // Don't add the very same relationship twice.
+      const alreadyExists = relationships.some(function (rel) {
+        if (rel.type !== type) { return false; }
+        if (type === "partner") {
+          // Partners are the same either way round.
+          return (rel.fromId === fromId && rel.toId === targetId) ||
+                 (rel.fromId === targetId && rel.toId === fromId);
+        }
+        return rel.fromId === fromId && rel.toId === targetId;
+      });
+
+      if (!alreadyExists) {
+        relationships.push({
+          id: makeId(),
+          fromId: fromId,
+          toId: targetId,
+          type: type
+        });
+        saveRelationships();
+      }
+      renderLines();
+    }
+
+    // --- Step H: Adding, editing, and removing. ---
+
+    // addCharacter: adds a new character to the tree.
+    function addCharacter() {
+      cancelConnecting();  // adding a character ends any in-progress line
+
+      const newName = nameInput.value.trim();
+      if (newName === "") { return; }
+
       const spot = nextStartingSpot();
       characters.push({ id: makeId(), name: newName, x: spot.x, y: spot.y });
 
       saveCharacters();
       renderCharacters();
-      refreshCharacterDropdowns();  // the new character should appear in the dropdowns
 
       nameInput.value = "";
       nameInput.focus();
@@ -854,170 +936,30 @@
     // saveEditedName: stores a new name for the character being edited.
     function saveEditedName(id, newNameRaw) {
       const newName = newNameRaw.trim();
-      if (newName === "") {
-        return;  // refuse to save an empty name
-      }
+      if (newName === "") { return; }
 
       const character = findCharacter(id);
       if (character) {
-        character.name = newName;  // the ID stays the same; only the name changes
+        character.name = newName;
       }
-
-      editingId = null;  // we're done editing
+      editingId = null;
       saveCharacters();
       renderCharacters();
-      refreshCharacterDropdowns();  // dropdowns show names, so refresh them
-      renderRelationships();        // relationship wording uses names too
     }
 
-    // removeCharacter: deletes a character AND any relationships that
-    // mention them.
+    // removeCharacter: deletes a character and any relationships with them.
     function removeCharacter(id) {
-      // .filter keeps only the items that pass the test, dropping the rest.
       characters = characters.filter(function (character) {
         return character.id !== id;
       });
-
-      // Drop any relationship where this character was either side,
-      // so we never leave a connection pointing at someone gone.
       relationships = relationships.filter(function (rel) {
         return rel.fromId !== id && rel.toId !== id;
       });
-
-      if (editingId === id) {
-        editingId = null;  // in case we removed the character being edited
-      }
+      if (editingId === id) { editingId = null; }
 
       saveCharacters();
       saveRelationships();
       renderCharacters();
-      refreshCharacterDropdowns();
-      renderRelationships();
-    }
-
-    // ----- Drawing the RELATIONSHIPS list -----
-
-    // fillTypeDropdown: puts the relationship choices into the type dropdown.
-    function fillTypeDropdown() {
-      RELATIONSHIP_TYPES.forEach(function (type) {
-        const option = document.createElement("option");
-        option.value = type.value;       // the short code we store
-        option.textContent = type.label; // the friendly wording shown
-        typeSelect.appendChild(option);
-      });
-    }
-
-    // fillCharacterDropdown: puts every character into one dropdown menu.
-    function fillCharacterDropdown(dropdown) {
-      // Remember what was selected so we can keep it after rebuilding.
-      const previousValue = dropdown.value;
-      dropdown.innerHTML = "";
-
-      // A faint placeholder option shown first.
-      const placeholder = document.createElement("option");
-      placeholder.value = "";
-      placeholder.textContent = "— choose a character —";
-      dropdown.appendChild(placeholder);
-
-      characters.forEach(function (character) {
-        const option = document.createElement("option");
-        // The option's value is the character's ID (stored as text).
-        option.value = character.id;
-        option.textContent = character.name;
-        dropdown.appendChild(option);
-      });
-
-      dropdown.value = previousValue;  // restore the earlier choice if still valid
-    }
-
-    // refreshCharacterDropdowns: rebuilds both character dropdowns.
-    function refreshCharacterDropdowns() {
-      fillCharacterDropdown(characterASelect);
-      fillCharacterDropdown(characterBSelect);
-    }
-
-    // labelForType: finds the friendly wording for a relationship code.
-    function labelForType(typeValue) {
-      const match = RELATIONSHIP_TYPES.find(function (type) {
-        return type.value === typeValue;
-      });
-      return match ? match.label : typeValue;
-    }
-
-    // describeRelationship: turns a relationship bundle into a sentence,
-    // e.g. "Alex is the parent of Jordan".
-    function describeRelationship(rel) {
-      const fromCharacter = findCharacter(rel.fromId);
-      const toCharacter   = findCharacter(rel.toId);
-      // If a character is somehow missing, show "(unknown)" rather than crash.
-      const fromName = fromCharacter ? fromCharacter.name : "(unknown)";
-      const toName   = toCharacter ? toCharacter.name : "(unknown)";
-      return fromName + " " + labelForType(rel.type) + " " + toName;
-    }
-
-    // renderRelationships: redraws the on-screen relationships list.
-    function renderRelationships() {
-      relationshipsList.innerHTML = "";
-
-      if (relationships.length === 0) {
-        const message = document.createElement("li");
-        message.textContent = "No relationships yet — connect two characters above.";
-        message.className = "empty-message";
-        relationshipsList.appendChild(message);
-        return;
-      }
-
-      relationships.forEach(function (rel) {
-        const row = document.createElement("li");
-
-        const text = document.createElement("span");
-        text.textContent = describeRelationship(rel);
-
-        const removeButton = document.createElement("button");
-        removeButton.textContent = "x";
-        removeButton.className = "remove-button";
-        removeButton.title = "Remove";
-        removeButton.addEventListener("click", function () {
-          removeRelationship(rel.id);
-        });
-
-        row.appendChild(text);
-        row.appendChild(removeButton);
-        relationshipsList.appendChild(row);
-      });
-    }
-
-    // addRelationship: connects the two chosen characters.
-    function addRelationship() {
-      // The dropdown values are text. Number(...) turns them into numbers.
-      const fromValue = characterASelect.value;
-      const toValue   = characterBSelect.value;
-
-      // Both characters must be chosen.
-      if (fromValue === "" || toValue === "") {
-        alert("Please choose two characters for the relationship.");
-        return;
-      }
-
-      const fromId = Number(fromValue);
-      const toId   = Number(toValue);
-
-      // A character can't be in a relationship with themselves.
-      if (fromId === toId) {
-        alert("Please choose two different characters.");
-        return;
-      }
-
-      relationships.push({
-        id: makeId(),
-        fromId: fromId,
-        toId: toId,
-        type: typeSelect.value
-      });
-
-      saveRelationships();
-      renderRelationships();
-      renderLines();  // draw the new connecting line
     }
 
     // removeRelationship: deletes one relationship by its ID.
@@ -1026,28 +968,52 @@
         return rel.id !== id;
       });
       saveRelationships();
-      renderRelationships();
-      renderLines();  // remove the line that went with it
+      renderLines();
     }
 
-    // --- Step D: Connect actions to the buttons. ---
+    // --- Step I: Connect actions to the page. ---
 
     addButton.addEventListener("click", addCharacter);
 
-    // Enter key in the name box also adds a character.
     nameInput.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
         addCharacter();
       }
     });
 
-    addRelationshipBtn.addEventListener("click", addRelationship);
+    // While connecting, the temporary line follows the cursor.
+    treeArea.addEventListener("pointermove", function (event) {
+      if (!connecting || !tempLine) { return; }
+      const areaRect = treeArea.getBoundingClientRect();
+      tempLine.setAttribute("x2", event.clientX - areaRect.left);
+      tempLine.setAttribute("y2", event.clientY - areaRect.top);
+    });
 
-    // --- Step E: Draw everything once when the page first opens. ---
-    fillTypeDropdown();
-    refreshCharacterDropdowns();
+    // Pressing empty space in the tree area cancels a connection.
+    treeArea.addEventListener("pointerdown", function (event) {
+      if (connecting && event.target === treeArea) {
+        cancelConnecting();
+      }
+    });
+
+    // Clicking anywhere outside the menu closes the menu.
+    document.addEventListener("click", function (event) {
+      if (typeMenu.classList.contains("hidden")) { return; }
+      if (typeMenu.contains(event.target)) { return; }
+      closeTypeMenu();
+    });
+
+    // The Escape key cancels connecting and closes the menu.
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        cancelConnecting();
+        closeTypeMenu();
+      }
+    });
+
+    // --- Step J: Draw everything once when the page first opens. ---
+    buildTypeMenu();
     renderCharacters();
-    renderRelationships();
   </script>
 
 </body>

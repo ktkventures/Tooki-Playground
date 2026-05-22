@@ -352,12 +352,14 @@
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
     // The relationship types you can start from a box's "+" menu.
-    // (Siblings are NOT here — the app works those out automatically
-    // from shared parents.)
+    // Note: characters who share parents are ALSO joined as siblings
+    // automatically. The "Sibling of…" option is for linking siblings
+    // directly — handy when their parents are not in the tree.
     const CONNECT_TYPES = [
       { value: "parent",  label: "Parent of…" },
       { value: "child",   label: "Child of…" },
-      { value: "partner", label: "Partner of…" }
+      { value: "partner", label: "Partner of…" },
+      { value: "sibling", label: "Sibling of…" }
     ];
 
     // --- Step B: Our data. ---
@@ -768,6 +770,20 @@
         });
       });
 
+      // ----- Sibling arches (red) — for siblings linked directly -----
+      // A squared arch: up from one box's top, across, down to the other.
+      relationships.forEach(function (rel) {
+        if (rel.type !== "sibling") { return; }
+        const a = boxGeometry(rel.fromId);
+        const b = boxGeometry(rel.toId);
+        if (!a || !b) { return; }
+        // The flat top of the arch sits a little above the higher box.
+        const archY = Math.min(a.topY, b.topY) - 26;
+        lineLayer.appendChild(svgLine(a.topX, a.topY, a.topX, archY, "offspring-line"));
+        lineLayer.appendChild(svgLine(a.topX, archY, b.topX, archY, "offspring-line"));
+        lineLayer.appendChild(svgLine(b.topX, archY, b.topX, b.topY, "offspring-line"));
+      });
+
       // ----- Hit lines (invisible, for deleting) -----
       // One clickable see-through line per relationship.
       relationships.forEach(function (rel) {
@@ -894,8 +910,8 @@
       // Don't add the very same relationship twice.
       const alreadyExists = relationships.some(function (rel) {
         if (rel.type !== type) { return false; }
-        if (type === "partner") {
-          // Partners are the same either way round.
+        if (type === "partner" || type === "sibling") {
+          // Partners and siblings are the same either way round.
           return (rel.fromId === fromId && rel.toId === targetId) ||
                  (rel.fromId === targetId && rel.toId === fromId);
         }

@@ -440,6 +440,60 @@
     .type-menu button:hover {
       background-color: #e3ded6;
     }
+
+    /*
+      The custom confirmation pop-up. The overlay covers the whole
+      window with a dim backdrop; the card sits centered inside it.
+    */
+    #confirm-overlay {
+      position: fixed;
+      inset: 0;                  /* top:0 right:0 bottom:0 left:0 in one go */
+      background-color: rgba(0, 0, 0, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    #confirm-card {
+      background-color: #f4efe7;
+      border: 1px solid #d8d3cb;
+      border-radius: 10px;
+      padding: 22px 24px 18px;
+      max-width: 420px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+    #confirm-message {
+      margin: 0 0 18px 0;
+      font-size: 15px;
+      color: #2b2b2b;
+      line-height: 1.4;
+    }
+    .confirm-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .confirm-button {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .confirm-button.cancel {
+      background-color: #e3ded6;
+      color: #2b2b2b;
+    }
+    .confirm-button.cancel:hover {
+      background-color: #d6d0c5;
+    }
+    .confirm-button.delete {
+      background-color: #b5544c;
+      color: white;
+    }
+    .confirm-button.delete:hover {
+      background-color: #9c463f;
+    }
   </style>
 </head>
 
@@ -508,6 +562,17 @@
 
   <!-- The relationship-type pop-up menu. JavaScript fills and positions it. -->
   <div id="type-menu" class="type-menu hidden"></div>
+
+  <!-- The custom confirmation pop-up. JS fills the message and shows it. -->
+  <div id="confirm-overlay" class="hidden">
+    <div id="confirm-card">
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel" class="confirm-button cancel">Cancel</button>
+        <button id="confirm-ok"     class="confirm-button delete">Delete</button>
+      </div>
+    </div>
+  </div>
 
 
   <script>
@@ -737,9 +802,10 @@
     }
 
     // deleteTree: removes a tree — but never the last remaining one.
+    // The caller is responsible for showing the confirm pop-up before
+    // calling this.
     function deleteTree(id) {
       if (trees.length <= 1) { return; }
-      if (!confirm("Delete this tree? This cannot be undone.")) { return; }
       trees = trees.filter(function (tree) { return tree.id !== id; });
       if (currentTreeId === id) {
         currentTreeId = trees[0].id;
@@ -787,7 +853,10 @@
           closeButton.title = "Delete this tree";
           closeButton.addEventListener("click", function (event) {
             event.stopPropagation();   // don't also switch to this tab
-            deleteTree(tree.id);
+            confirmAction(
+              "Delete the tree '" + tree.name + "'? This cannot be undone.",
+              function () { deleteTree(tree.id); }
+            );
           });
           tab.appendChild(closeButton);
         }
@@ -1045,7 +1114,9 @@
           removeButton.addEventListener("click", function (event) {
             event.stopPropagation();
             if (connecting) { return; }
-            removeCharacter(character.id);
+            confirmAction(characterDeleteMessage(character), function () {
+              removeCharacter(character.id);
+            });
           });
 
           const buttonGroup = document.createElement("div");
@@ -1291,9 +1362,11 @@
         const hit = svgLine(x1, y1, x2, y2, "hit-line");
         hit.addEventListener("click", function () {
           if (connecting) { return; }
-          if (confirm("Remove this relationship?")) {
+          const rel = relationships.find(function (r) { return r.id === relId; });
+          if (!rel) { return; }
+          confirmAction(describeRelationship(rel), function () {
             removeRelationship(relId);
-          }
+          });
         });
         lineLayer.appendChild(hit);
       }
@@ -1524,6 +1597,90 @@
     function closeTypeMenu() {
       typeMenu.classList.add("hidden");
       menuForId = null;
+    }
+
+    // ----- Custom delete-confirmation pop-up -----
+
+    // confirmAction: shows the centered modal with the given message.
+    // If the user clicks Delete, onConfirm() runs. If they click Cancel,
+    // press Escape, or click the dim backdrop, nothing happens. Cancel
+    // starts focused so a stray Enter never deletes by accident.
+    function confirmAction(message, onConfirm) {
+      const overlay   = document.getElementById("confirm-overlay");
+      const messageEl = document.getElementById("confirm-message");
+      const okButton     = document.getElementById("confirm-ok");
+      const cancelButton = document.getElementById("confirm-cancel");
+
+      messageEl.textContent = message;
+      overlay.classList.remove("hidden");
+      cancelButton.focus();
+
+      function cleanup() {
+        overlay.classList.add("hidden");
+        okButton.removeEventListener("click", onOk);
+        cancelButton.removeEventListener("click", onCancel);
+        overlay.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+      }
+      function onOk()     { cleanup(); onConfirm(); }
+      function onCancel() { cleanup(); }
+      function onBackdrop(event) {
+        if (event.target === overlay) { onCancel(); }
+      }
+      function onKey(event) {
+        if (event.key === "Escape") { onCancel(); }
+      }
+
+      okButton.addEventListener("click", onOk);
+      cancelButton.addEventListener("click", onCancel);
+      overlay.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+    }
+
+    // describeRelationship: turns a relationship into a friendly sentence
+    // for the confirm pop-up, naming the two characters and the role.
+    function describeRelationship(rel) {
+      if (rel.type === "partner") {
+        const a = findCharacter(rel.fromId);
+        const b = findCharacter(rel.toId);
+        if (!a || !b) { return "Remove this relationship?"; }
+        return "Remove the partner line between '" + a.name + "' and '" + b.name + "'?";
+      }
+      if (rel.type === "sibling") {
+        const a = findCharacter(rel.fromId);
+        const b = findCharacter(rel.toId);
+        if (!a || !b) { return "Remove this relationship?"; }
+        return "Remove the sibling line between '" + a.name + "' and '" + b.name + "'?";
+      }
+      // parent / child — figure out who's the parent and who's the child.
+      let parent, child;
+      if (rel.type === "parent") {
+        parent = findCharacter(rel.fromId);
+        child  = findCharacter(rel.toId);
+      } else {
+        parent = findCharacter(rel.toId);
+        child  = findCharacter(rel.fromId);
+      }
+      if (!parent || !child) { return "Remove this relationship?"; }
+      return "Remove the parent line from '" + parent.name
+           + "' to '" + child.name + "'?";
+    }
+
+    // characterDeleteMessage: warns about how many relationships a
+    // character has, so deleting them is not a surprise.
+    function characterDeleteMessage(character) {
+      let count = 0;
+      relationships.forEach(function (rel) {
+        if (rel.fromId === character.id || rel.toId === character.id) {
+          count += 1;
+        }
+      });
+      if (count === 0) {
+        return "Delete the character '" + character.name + "'?";
+      }
+      const noun = (count === 1) ? "relationship" : "relationships";
+      return "Delete the character '" + character.name
+           + "'? This will also remove " + count + " " + noun + ".";
     }
 
     // --- Step G: Connecting two characters. ---

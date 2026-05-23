@@ -454,6 +454,12 @@
       justify-content: center;
       z-index: 100;
     }
+    /* The generic .hidden rule is outranked by the #confirm-overlay
+       rule above (an ID beats a class), so we need this more specific
+       version to actually hide the pop-up when it's not in use. */
+    #confirm-overlay.hidden {
+      display: none;
+    }
     #confirm-card {
       background-color: #f4efe7;
       border: 1px solid #d8d3cb;

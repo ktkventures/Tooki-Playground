@@ -303,12 +303,15 @@
       position: absolute;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      min-width: 110px;
+      align-items: center;
+      gap: 4px;
+      min-width: 120px;
       background-color: white;
       border: 1px solid #c9c4bd;
       border-radius: 8px;
-      padding: 10px;
+      /* extra room on the right for the "+" and at the bottom for the
+         three-dot menu, both positioned in those corners */
+      padding: 12px 30px 22px 14px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
       cursor: grab;
       user-select: none;
@@ -341,34 +344,64 @@
       text-align: center;
     }
 
-    /* The round green "+" handle in the corner of each box. */
+    /*
+      The "+" handle in the box's top-right corner. It starts a new
+      relationship line. By default it is just a green plus sign with
+      no background; on hover the green circle fades in around it.
+    */
     .connect-handle {
       position: absolute;
-      top: -10px;
-      right: -10px;
+      top: 4px;
+      right: 4px;
       width: 22px;
       height: 22px;
       padding: 0;
+      border: none;
       border-radius: 50%;        /* a full circle */
-      background-color: #5b8a72;
-      color: white;
+      background-color: transparent;
+      color: #5b8a72;            /* the same green it fades to */
       font-size: 16px;
       line-height: 1;
+      cursor: pointer;
+      /* "transition" smoothly animates the listed properties whenever
+         they change (on hover, focus, etc.) over the given duration. */
+      transition: background-color 0.15s ease, color 0.15s ease;
     }
-
-    /* The group holding the Edit and x buttons. */
-    .button-group {
-      display: flex;
-      justify-content: center;
-      gap: 6px;
-    }
-
-    /* The "Edit" button on each box. */
-    .edit-button {
-      padding: 5px 10px;
-      background-color: #4a6d8c;
+    .connect-handle:hover {
+      background-color: #5b8a72;
       color: white;
-      font-size: 13px;
+    }
+
+    /*
+      The three-dot "more options" button in the box's bottom-right
+      corner. Clicking it opens the edit window for that character.
+      Dots are a soft gray by default and fade to dark blue on hover.
+    */
+    .menu-button {
+      position: absolute;
+      bottom: 2px;
+      right: 6px;
+      padding: 2px 4px;
+      border: none;
+      background-color: transparent;
+      color: #b8b3a9;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      transition: color 0.15s ease;
+    }
+    .menu-button:hover {
+      color: #4a6d8c;            /* the dark blue from the old Edit button */
+    }
+
+    /* The row holding the delete and Save buttons inside the edit window. */
+    .edit-button-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 4px;
     }
 
     /* The "Save" button shown while editing a name. */
@@ -1076,47 +1109,24 @@
         box.style.top  = character.y + "px";
 
         if (character.id === editingId) {
-          // Edit mode: a text box and a Save button.
+          // Edit window: a name text box, plus a row holding the
+          // delete (x) button on the left and the Save button on the
+          // right. More fields (traits, notes) can be added here later
+          // between the input and the button row.
           const input = document.createElement("input");
           input.type = "text";
           input.className = "edit-input";
           input.value = character.name;
-
-          const saveButton = document.createElement("button");
-          saveButton.textContent = "Save";
-          saveButton.className = "save-button";
-          saveButton.addEventListener("click", function (event) {
-            event.stopPropagation();
-            saveEditedName(character.id, input.value);
-          });
           input.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
               saveEditedName(character.id, input.value);
             }
           });
 
-          box.appendChild(input);
-          box.appendChild(saveButton);
-        } else {
-          // Normal display: the name, plus Edit and x buttons.
-          const nameText = document.createElement("div");
-          nameText.className = "character-name";
-          nameText.textContent = character.name;
-
-          const editButton = document.createElement("button");
-          editButton.textContent = "Edit";
-          editButton.className = "edit-button";
-          editButton.addEventListener("click", function (event) {
-            event.stopPropagation();         // don't let the box react too
-            if (connecting) { return; }
-            editingId = character.id;
-            renderCharacters();
-          });
-
           const removeButton = document.createElement("button");
           removeButton.textContent = "x";
           removeButton.className = "remove-button";
-          removeButton.title = "Remove";
+          removeButton.title = "Delete this character";
           removeButton.addEventListener("click", function (event) {
             event.stopPropagation();
             if (connecting) { return; }
@@ -1125,12 +1135,29 @@
             });
           });
 
-          const buttonGroup = document.createElement("div");
-          buttonGroup.className = "button-group";
-          buttonGroup.appendChild(editButton);
-          buttonGroup.appendChild(removeButton);
+          const saveButton = document.createElement("button");
+          saveButton.textContent = "Save";
+          saveButton.className = "save-button";
+          saveButton.addEventListener("click", function (event) {
+            event.stopPropagation();
+            saveEditedName(character.id, input.value);
+          });
 
-          // The round "+" handle that starts a new relationship.
+          const buttonRow = document.createElement("div");
+          buttonRow.className = "edit-button-row";
+          buttonRow.appendChild(removeButton);
+          buttonRow.appendChild(saveButton);
+
+          box.appendChild(input);
+          box.appendChild(buttonRow);
+        } else {
+          // Normal display: the name, with a "+" in the top-right
+          // corner (start a new relationship) and a three-dot "⋯"
+          // button in the bottom-right corner (open the edit window).
+          const nameText = document.createElement("div");
+          nameText.className = "character-name";
+          nameText.textContent = character.name;
+
           const connectHandle = document.createElement("button");
           connectHandle.textContent = "+";
           connectHandle.className = "connect-handle";
@@ -1141,9 +1168,20 @@
             openTypeMenu(character.id, connectHandle);
           });
 
+          const menuButton = document.createElement("button");
+          menuButton.textContent = "⋯";   // "⋯" — three horizontal dots
+          menuButton.className = "menu-button";
+          menuButton.title = "Edit this character";
+          menuButton.addEventListener("click", function (event) {
+            event.stopPropagation();
+            if (connecting) { return; }
+            editingId = character.id;
+            renderCharacters();
+          });
+
           box.appendChild(connectHandle);
           box.appendChild(nameText);
-          box.appendChild(buttonGroup);
+          box.appendChild(menuButton);
         }
 
         // While connecting, a click on a box finishes the connection.

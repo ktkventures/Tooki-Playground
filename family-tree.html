@@ -1344,6 +1344,21 @@
         groups[key].children.push(childId);
       });
 
+      // Any pair of children sharing the exact same parents is ALREADY
+      // shown as siblings via the bar above. Remember those pairs so we
+      // can skip drawing a redundant arch for them later.
+      const impliedSiblingPairs = new Set();
+      Object.keys(groups).forEach(function (key) {
+        const kids = groups[key].children;
+        for (let i = 0; i < kids.length; i++) {
+          for (let j = i + 1; j < kids.length; j++) {
+            const lo = Math.min(kids[i], kids[j]);
+            const hi = Math.max(kids[i], kids[j]);
+            impliedSiblingPairs.add(lo + "-" + hi);
+          }
+        }
+      });
+
       // Helper: find every parent-child relationship that links one of
       // the given parents to a particular child. Each gets its own
       // hit-line so clicking removes one parent link at a time.
@@ -1432,6 +1447,11 @@
       // the arch wherever you see it.
       relationships.forEach(function (rel) {
         if (rel.type !== "sibling") { return; }
+        // If these two are already siblings via shared parents, the
+        // arch would be a duplicate of the bar overhead — skip it.
+        const lo = Math.min(rel.fromId, rel.toId);
+        const hi = Math.max(rel.fromId, rel.toId);
+        if (impliedSiblingPairs.has(lo + "-" + hi)) { return; }
         const a = boxGeometry(rel.fromId);
         const b = boxGeometry(rel.toId);
         if (!a || !b) { return; }

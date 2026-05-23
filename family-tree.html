@@ -162,7 +162,8 @@
       font-size: 22px;     /* bigger than the character boxes */
       font-weight: bold;
       color: #2b2b2b;
-      background-color: rgba(255, 255, 255, 0.85);
+      background-color: transparent;   /* see-through, so the empty-state
+                                          message behind it stays visible */
       border: 1px solid transparent;
       border-radius: 8px;
     }
@@ -172,7 +173,6 @@
     #tree-title:focus {
       outline: none;
       border-color: #5b8a72;
-      background-color: white;
     }
 
     /* The row of tree tabs along the bottom of the canvas. */
@@ -255,6 +255,7 @@
       stroke-width: 3;
       stroke-dasharray: 2 6;
       stroke-linecap: round;
+      pointer-events: none;   /* clicks belong to the hit-line below */
     }
 
     /* Offspring and sibling lines — red. */
@@ -262,6 +263,7 @@
       stroke: #c0392b;
       stroke-width: 2;
       fill: none;
+      pointer-events: none;   /* clicks belong to the hit-line below */
     }
 
     /* The line that follows the cursor while you connect two boxes. */
@@ -271,16 +273,21 @@
     }
 
     /*
-      An invisible, extra-thick line sitting on top of each real line.
-      It is see-through but clickable, giving you an easy target for
-      deleting a relationship. "pointer-events: stroke" switches
-      clicking back on just for this shape.
+      An invisible, extra-thick line sitting under each real line. It is
+      see-through normally so you can see the visible red/pink line on
+      top of it. When you hover, a soft gray halo fades in around the
+      visible line, showing you the click target.
+      "pointer-events: stroke" makes it clickable even when transparent.
     */
     .hit-line {
       stroke: transparent;
       stroke-width: 14;
       pointer-events: stroke;
       cursor: pointer;
+      transition: stroke 0.15s ease;
+    }
+    .hit-line:hover {
+      stroke: rgba(60, 60, 60, 0.22);
     }
 
     /* While connecting, ignore the hit lines so clicks reach the boxes. */
@@ -1136,6 +1143,8 @@
           resizeCanvas();
           applyBoxPositions();  // a left/top expansion moves every box
           renderLines();        // lines follow the boxes
+          // If the cursor is near a viewport edge, scroll the view too.
+          autoScrollViewportTowardCursor(moveEvent.clientX, moveEvent.clientY);
         }
 
         function onUp() {
@@ -1148,6 +1157,20 @@
         box.addEventListener("pointermove", onMove);
         box.addEventListener("pointerup", onUp);
       });
+    }
+
+    // autoScrollViewportTowardCursor: while dragging, if the cursor is
+    // near a viewport edge, nudge the viewport in that direction so the
+    // user can keep dragging into space that's currently off-screen.
+    // The canvas grows on its own to fit; this just lets the view follow.
+    function autoScrollViewportTowardCursor(clientX, clientY) {
+      const rect = treeArea.getBoundingClientRect();
+      const edge  = 40;   // start scrolling within this many pixels of an edge
+      const speed = 14;   // how many pixels to scroll per move event
+      if      (clientX > rect.right  - edge) { treeArea.scrollLeft += speed; }
+      else if (clientX < rect.left   + edge) { treeArea.scrollLeft -= speed; }
+      if      (clientY > rect.bottom - edge) { treeArea.scrollTop  += speed; }
+      else if (clientY < rect.top    + edge) { treeArea.scrollTop  -= speed; }
     }
 
     // ----- The temporary group selection (the marquee) -----
@@ -1208,6 +1231,8 @@
         marqueeElement.style.top    = top    + "px";
         marqueeElement.style.width  = width  + "px";
         marqueeElement.style.height = height + "px";
+        // Scroll the viewport too if we're near an edge.
+        autoScrollViewportTowardCursor(moveEvent.clientX, moveEvent.clientY);
       }
 
       function onUp() {
@@ -1250,11 +1275,28 @@
     // --- Step E: Drawing the relationship lines. ---
 
     // renderLines: draws every relationship line. Called whenever boxes
-    // move or relationships change.
+    // move or relationships change. Each visible line also gets a fat
+    // invisible "hit-line" that follows the SAME path — so wherever you
+    // see a line, you can click that exact spot to delete it.
     function renderLines() {
       lineLayer.innerHTML = "";
 
       const links = getParentChildLinks();
+
+      // Helper: for one visible segment, append a hit-line in the same
+      // place that, when clicked, asks to remove the given relationship.
+      // The hit-line is appended FIRST so the visible line draws on top
+      // of it — the gray hover halo then peeks out to either side.
+      function addHit(x1, y1, x2, y2, relId) {
+        const hit = svgLine(x1, y1, x2, y2, "hit-line");
+        hit.addEventListener("click", function () {
+          if (connecting) { return; }
+          if (confirm("Remove this relationship?")) {
+            removeRelationship(relId);
+          }
+        });
+        lineLayer.appendChild(hit);
+      }
 
       // ----- Partner lines (pink dotted) -----
       // Remember each couple's midpoint so offspring lines can start there.
@@ -1264,6 +1306,7 @@
         const a = boxGeometry(rel.fromId);
         const b = boxGeometry(rel.toId);
         if (!a || !b) { return; }
+        addHit(a.centerX, a.centerY, b.centerX, b.centerY, rel.id);
         lineLayer.appendChild(
           svgLine(a.centerX, a.centerY, b.centerX, b.centerY, "partner-line")
         );
@@ -1273,7 +1316,7 @@
         };
       });
 
-      // ----- Offspring + sibling lines (red) -----
+      // ----- Offspring lines (red) -----
       // First, for each child, gather the IDs of its parents.
       const parentsByChild = {};
       links.forEach(function (link) {
@@ -1301,6 +1344,26 @@
         groups[key].children.push(childId);
       });
 
+      // Helper: find every parent-child relationship that links one of
+      // the given parents to a particular child. Each gets its own
+      // hit-line so clicking removes one parent link at a time.
+      function relIdsForLink(childId, parentIds) {
+        const ids = [];
+        relationships.forEach(function (rel) {
+          if (rel.type !== "parent" && rel.type !== "child") { return; }
+          let parentId, kidId;
+          if (rel.type === "parent") {
+            parentId = rel.fromId; kidId = rel.toId;
+          } else {
+            parentId = rel.toId;   kidId = rel.fromId;
+          }
+          if (kidId === childId && parentIds.indexOf(parentId) !== -1) {
+            ids.push(rel.id);
+          }
+        });
+        return ids;
+      }
+
       // Draw each group.
       Object.keys(groups).forEach(function (key) {
         const parents  = groups[key].parents;
@@ -1311,9 +1374,13 @@
         if (!origin) { return; }
 
         if (children.length === 1) {
-          // One child: a single red line to its box top.
+          // One child: a single red line from the origin to its top.
+          // Click anywhere along it to remove a parent link.
           const kid = boxGeometry(children[0]);
           if (kid) {
+            relIdsForLink(children[0], parents).forEach(function (relId) {
+              addHit(origin.x, origin.y, kid.topX, kid.topY, relId);
+            });
             lineLayer.appendChild(
               svgLine(origin.x, origin.y, kid.topX, kid.topY, "offspring-line")
             );
@@ -1321,9 +1388,11 @@
           return;
         }
 
-        // Several children: a "square arch" connecting the siblings.
-        // The bar starts at the origin's x so the parent drop reaches it,
-        // then stretches just far enough to cover every child.
+        // Several children: a "square arch" — parent drop, horizontal
+        // bar across, then a short drop to each child. The drop to
+        // each child is unique, so that drop is the click target for
+        // that child's parent-link(s); the shared parent-drop and bar
+        // have no hit area (they belong to no single relationship).
         let highestTop = Infinity;
         let barLeft    = origin.x;
         let barRight   = origin.x;
@@ -1337,53 +1406,42 @@
         if (highestTop === Infinity) { return; }
 
         const barY = highestTop - 28;
-        // Drop from the parents down to the bar.
+        // Parent drop and bar — shared, no hit area.
         lineLayer.appendChild(
           svgLine(origin.x, origin.y, origin.x, barY, "offspring-line")
         );
-        // The horizontal bar joining the siblings.
         lineLayer.appendChild(
           svgLine(barLeft, barY, barRight, barY, "offspring-line")
         );
-        // A short drop from the bar down to each child's box top.
+        // Each child's drop — hit area covers that child's link(s).
         children.forEach(function (childId) {
           const kid = boxGeometry(childId);
-          if (kid) {
-            lineLayer.appendChild(
-              svgLine(kid.topX, barY, kid.topX, kid.topY, "offspring-line")
-            );
-          }
+          if (!kid) { return; }
+          relIdsForLink(childId, parents).forEach(function (relId) {
+            addHit(kid.topX, barY, kid.topX, kid.topY, relId);
+          });
+          lineLayer.appendChild(
+            svgLine(kid.topX, barY, kid.topX, kid.topY, "offspring-line")
+          );
         });
       });
 
       // ----- Sibling arches (red) — for siblings linked directly -----
-      // A squared arch: up from one box's top, across, down to the other.
+      // A squared arch: up from one box's top, across, down to the
+      // other. The hit area follows all three segments so you can click
+      // the arch wherever you see it.
       relationships.forEach(function (rel) {
         if (rel.type !== "sibling") { return; }
         const a = boxGeometry(rel.fromId);
         const b = boxGeometry(rel.toId);
         if (!a || !b) { return; }
-        // The flat top of the arch sits a little above the higher box.
         const archY = Math.min(a.topY, b.topY) - 26;
+        addHit(a.topX, a.topY, a.topX, archY,  rel.id);
+        addHit(a.topX, archY,  b.topX, archY,  rel.id);
+        addHit(b.topX, archY,  b.topX, b.topY, rel.id);
         lineLayer.appendChild(svgLine(a.topX, a.topY, a.topX, archY, "offspring-line"));
         lineLayer.appendChild(svgLine(a.topX, archY, b.topX, archY, "offspring-line"));
         lineLayer.appendChild(svgLine(b.topX, archY, b.topX, b.topY, "offspring-line"));
-      });
-
-      // ----- Hit lines (invisible, for deleting) -----
-      // One clickable see-through line per relationship.
-      relationships.forEach(function (rel) {
-        const a = boxGeometry(rel.fromId);
-        const b = boxGeometry(rel.toId);
-        if (!a || !b) { return; }
-        const hit = svgLine(a.centerX, a.centerY, b.centerX, b.centerY, "hit-line");
-        hit.addEventListener("click", function () {
-          if (connecting) { return; }
-          if (confirm("Remove this relationship?")) {
-            removeRelationship(rel.id);
-          }
-        });
-        lineLayer.appendChild(hit);
       });
     }
 

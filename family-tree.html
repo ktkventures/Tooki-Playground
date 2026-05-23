@@ -314,6 +314,20 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
     }
 
+    /* A character that is part of the temporary group selection. */
+    .character-box.selected {
+      outline: 2px solid #5b8a72;
+      outline-offset: 2px;
+    }
+
+    /* The dashed rectangle the user drags out to pick a group of boxes. */
+    .marquee {
+      position: absolute;
+      border: 1px dashed #5b8a72;
+      background-color: rgba(91, 138, 114, 0.12);
+      pointer-events: none;   /* clicks pass through to the canvas below */
+    }
+
     /* The character's name shown in the box. */
     .character-name {
       font-weight: bold;
@@ -557,6 +571,14 @@
     // holds { fromId, type }. It is null the rest of the time.
     let connecting = null;
 
+    // "selection" — the IDs of every character box currently in the
+    // temporary group (drawn out with a marquee). Empty most of the time.
+    let selection = new Set();
+
+    // "marqueeElement" — the dashed rectangle div while the user is
+    // dragging one out. Null the rest of the time.
+    let marqueeElement = null;
+
     // "tempLine" — the SVG line that follows the cursor while connecting.
     let tempLine = null;
 
@@ -632,6 +654,7 @@
       treeTitleInput.value = tree.title;
       nextId    = computeNextId();
       editingId = null;
+      selection = new Set();   // a different tree has different IDs
     }
 
     // persist: copies the working state back into the current tree, then
@@ -1053,9 +1076,13 @@
 
       resizeCanvas();
       renderLines();
+      applySelectionClasses();   // keep the green outlines after a redraw
     }
 
-    // makeDraggable: lets a box be dragged around the tree area.
+    // makeDraggable: lets a box be dragged around the tree area. If the
+    // box is part of the temporary group selection, the WHOLE group
+    // moves together; otherwise the selection is cleared and only this
+    // box moves.
     function makeDraggable(box, character) {
       box.addEventListener("pointerdown", function (event) {
         // While connecting a relationship, boxes don't drag — a click
@@ -1067,20 +1094,41 @@
           return;
         }
 
+        // Decide who is moving. Pressing a selected box moves the group;
+        // pressing an un-selected box clears the group and moves just it.
+        let movingIds;
+        if (selection.has(character.id)) {
+          movingIds = Array.from(selection);
+        } else {
+          clearSelection();
+          movingIds = [character.id];
+        }
+
         box.setPointerCapture(event.pointerId);
         box.classList.add("dragging");
 
+        // Remember each moving box's offset from the cursor at the start,
+        // in canvas units (so it's independent of zoom).
         const canvasRect = canvas.getBoundingClientRect();
-        // Divide by "zoom" to turn on-screen pixels into canvas units.
-        const grabOffsetX = (event.clientX - canvasRect.left) / zoom - character.x;
-        const grabOffsetY = (event.clientY - canvasRect.top)  / zoom - character.y;
+        const startCursorX = (event.clientX - canvasRect.left) / zoom;
+        const startCursorY = (event.clientY - canvasRect.top)  / zoom;
+        const grabOffsets = {};
+        movingIds.forEach(function (id) {
+          const c = findCharacter(id);
+          grabOffsets[id] = { x: startCursorX - c.x, y: startCursorY - c.y };
+        });
 
         function onMove(moveEvent) {
           // Recompute the canvas position every move — it can shift when
           // the canvas grows to the left and we scroll to keep up.
           const rect = canvas.getBoundingClientRect();
-          character.x = (moveEvent.clientX - rect.left) / zoom - grabOffsetX;
-          character.y = (moveEvent.clientY - rect.top)  / zoom - grabOffsetY;
+          const cx = (moveEvent.clientX - rect.left) / zoom;
+          const cy = (moveEvent.clientY - rect.top)  / zoom;
+          movingIds.forEach(function (id) {
+            const c = findCharacter(id);
+            c.x = cx - grabOffsets[id].x;
+            c.y = cy - grabOffsets[id].y;
+          });
 
           // Pulled past the top/left edge? Grow the canvas that way.
           // resizeCanvas handles growing to the right and bottom.
@@ -1100,6 +1148,103 @@
         box.addEventListener("pointermove", onMove);
         box.addEventListener("pointerup", onUp);
       });
+    }
+
+    // ----- The temporary group selection (the marquee) -----
+
+    // applySelectionClasses: makes the boxes match the "selection" set,
+    // adding or removing the green outline.
+    function applySelectionClasses() {
+      Object.keys(boxElements).forEach(function (idText) {
+        const box = boxElements[idText];
+        if (!box) { return; }
+        if (selection.has(Number(idText))) {
+          box.classList.add("selected");
+        } else {
+          box.classList.remove("selected");
+        }
+      });
+    }
+
+    // clearSelection: empties the group.
+    function clearSelection() {
+      if (selection.size === 0) { return; }
+      selection = new Set();
+      applySelectionClasses();
+    }
+
+    // startMarquee: begins drawing the dashed rectangle. Called when the
+    // user presses on empty canvas. When they release, every box the
+    // rectangle touches joins the selection.
+    function startMarquee(event) {
+      // Stop the browser from selecting text or starting a drag-ghost
+      // while the rectangle is being drawn.
+      event.preventDefault();
+
+      const canvasRect = canvas.getBoundingClientRect();
+      const startX = (event.clientX - canvasRect.left) / zoom;
+      const startY = (event.clientY - canvasRect.top)  / zoom;
+
+      // Drawing a new marquee always starts from a clean slate.
+      clearSelection();
+
+      marqueeElement = document.createElement("div");
+      marqueeElement.className = "marquee";
+      marqueeElement.style.left   = startX + "px";
+      marqueeElement.style.top    = startY + "px";
+      marqueeElement.style.width  = "0px";
+      marqueeElement.style.height = "0px";
+      canvas.appendChild(marqueeElement);
+
+      function onMove(moveEvent) {
+        const rect = canvas.getBoundingClientRect();
+        const cx = (moveEvent.clientX - rect.left) / zoom;
+        const cy = (moveEvent.clientY - rect.top)  / zoom;
+        const left   = Math.min(startX, cx);
+        const top    = Math.min(startY, cy);
+        const width  = Math.abs(cx - startX);
+        const height = Math.abs(cy - startY);
+        marqueeElement.style.left   = left   + "px";
+        marqueeElement.style.top    = top    + "px";
+        marqueeElement.style.width  = width  + "px";
+        marqueeElement.style.height = height + "px";
+      }
+
+      function onUp() {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup",   onUp);
+
+        // Read the rectangle we ended up with (in canvas units).
+        const left   = parseFloat(marqueeElement.style.left);
+        const top    = parseFloat(marqueeElement.style.top);
+        const width  = parseFloat(marqueeElement.style.width);
+        const height = parseFloat(marqueeElement.style.height);
+        const right  = left + width;
+        const bottom = top  + height;
+
+        marqueeElement.remove();
+        marqueeElement = null;
+
+        // Add every box that overlaps the rectangle. "Any overlap"
+        // counts — even just touching a corner.
+        characters.forEach(function (character) {
+          const box = boxElements[character.id];
+          if (!box) { return; }
+          const boxLeft   = character.x;
+          const boxTop    = character.y;
+          const boxRight  = boxLeft + box.offsetWidth;
+          const boxBottom = boxTop  + box.offsetHeight;
+          const overlaps = !(boxRight < left || boxLeft > right
+                          || boxBottom < top || boxTop > bottom);
+          if (overlaps) {
+            selection.add(character.id);
+          }
+        });
+        applySelectionClasses();
+      }
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup",   onUp);
     }
 
     // --- Step E: Drawing the relationship lines. ---
@@ -1413,6 +1558,7 @@
         return rel.fromId !== id && rel.toId !== id;
       });
       if (editingId === id) { editingId = null; }
+      selection.delete(id);   // also forget it from the group, if it was in it
 
       saveCharacters();
       saveRelationships();
@@ -1446,10 +1592,20 @@
       tempLine.setAttribute("y2", (event.clientY - canvasRect.top)  / zoom);
     });
 
-    // Pressing empty space in the tree area cancels a connection.
+    // Pressing on empty canvas does one of two things: cancel a
+    // half-drawn connection, or start dragging a marquee rectangle to
+    // pick a group of boxes.
     treeArea.addEventListener("pointerdown", function (event) {
-      if (connecting && (event.target === canvas || event.target === treeArea)) {
-        cancelConnecting();
+      const onEmpty = (event.target === canvas
+                    || event.target === treeArea
+                    || event.target === lineLayer);
+      if (connecting) {
+        if (onEmpty) { cancelConnecting(); }
+        return;
+      }
+      if (event.button === 0
+          && (event.target === canvas || event.target === lineLayer)) {
+        startMarquee(event);
       }
     });
 
@@ -1460,11 +1616,13 @@
       closeTypeMenu();
     });
 
-    // The Escape key cancels connecting and closes the menu.
+    // The Escape key cancels connecting, closes the menu, and clears
+    // the temporary group selection.
     document.addEventListener("keydown", function (event) {
       if (event.key === "Escape") {
         cancelConnecting();
         closeTypeMenu();
+        clearSelection();
       }
     });
 

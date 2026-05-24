@@ -924,10 +924,27 @@
     // nextStartingSpot: a default x/y for a brand-new character box,
     // nudged a little each time so new boxes don't land in an exact stack.
     function nextStartingSpot() {
-      // Start clear of the toolbar and title in the top-left corner.
-      const step = 26;
+      // Roughly the size of a freshly-rendered box — used to centre the
+      // box itself (not its top-left corner) on the viewport's centre.
+      const approxBoxWidth  = 130;
+      const approxBoxHeight = 50;
+
+      // The centre of the currently-visible viewport, expressed in
+      // canvas (un-zoomed) units. scrollLeft/scrollTop track how far the
+      // user has scrolled; dividing by zoom turns on-screen pixels into
+      // canvas units (the same units character positions use).
+      const centerX = (treeArea.scrollLeft + treeArea.clientWidth  / 2) / zoom;
+      const centerY = (treeArea.scrollTop  + treeArea.clientHeight / 2) / zoom;
+
+      // A small cascade so adding several characters in a row spreads
+      // them out instead of dropping them all on the exact same spot.
       const slot = characters.length % 6;
-      return { x: 70 + slot * step, y: 60 + slot * step };
+      const cascade = slot * 22;
+
+      return {
+        x: centerX - approxBoxWidth  / 2 + cascade,
+        y: centerY - approxBoxHeight / 2 + cascade
+      };
     }
 
     // saveZoom / saveTitle: more named save points; like the others

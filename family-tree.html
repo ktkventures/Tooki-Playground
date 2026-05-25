@@ -33,7 +33,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Permanent+Marker&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Patrick+Hand&family=Permanent+Marker&display=swap">
 
   <style>
     /*
@@ -57,13 +57,18 @@
       font-family: inherit;
     }
 
-    /* Headings and titles use the bold marker face. */
-    h1,
-    #tree-title,
-    .character-name {
+    /* Page heading uses the bold marker face. */
+    h1 {
       font-family: 'Permanent Marker', cursive;
       font-weight: normal;   /* Permanent Marker is already heavy */
       letter-spacing: 0.5px;
+    }
+
+    /* Canvas title and character names use a lighter brush face. */
+    #tree-title,
+    .character-name {
+      font-family: 'Caveat Brush', cursive;
+      font-weight: normal;
     }
 
     h1 {
@@ -239,12 +244,12 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 12px;
+      padding: 8px 20px;
       background-color: #ece8e2;
       border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 0 0 8px 8px;   /* rounded bottom — a hanging tab */
       cursor: pointer;
-      font-size: 14px;
+      font-size: 17px;
       user-select: none;
     }
 

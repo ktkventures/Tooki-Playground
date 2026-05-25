@@ -23,6 +23,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Family Tree Creator</title>
 
+  <!--
+    Google Fonts. "preconnect" hints to the browser that we'll need to
+    talk to these domains so it can start the handshake early; the
+    stylesheet then loads Permanent Marker (for headers/titles) and
+    Patrick Hand (for everything else). Both are free under the SIL
+    Open Font License — usable in any project, commercial or not.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Permanent+Marker&display=swap">
+
   <style>
     /*
       CSS section. Each block below picks something on the page
@@ -32,10 +44,26 @@
 
     /* "body" is the whole page. This sets the overall look. */
     body {
-      font-family: Arial, sans-serif;   /* a clean, easy-to-read font */
+      font-family: 'Patrick Hand', cursive;   /* casual handwriting */
+      font-size: 17px;                  /* a touch bigger to suit the font */
       margin: 40px;                     /* space around all four edges */
       background-color: #ece8e0;        /* subtle cool cream */
       color: #2b2b2b;                   /* dark gray text (softer than pure black) */
+    }
+
+    /* Make buttons and inputs inherit the body font instead of the
+       browser default. Without this, form elements look mismatched. */
+    button, input, textarea, select {
+      font-family: inherit;
+    }
+
+    /* Headings and titles use the bold marker face. */
+    h1,
+    #tree-title,
+    .character-name {
+      font-family: 'Permanent Marker', cursive;
+      font-weight: normal;   /* Permanent Marker is already heavy */
+      letter-spacing: 0.5px;
     }
 
     h1 {
@@ -91,7 +119,7 @@
       max-width: 500px;   /* don't stretch wider than this on big screens */
       padding: 10px;
       font-size: 16px;
-      border: 1px solid #c9c4bd;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 6px;
     }
 
@@ -119,7 +147,7 @@
       position: relative;
       height: 70vh;        /* 70% of the browser window's height */
       min-height: 420px;   /* ...but never shorter than this */
-      border: 2px dashed #c9c4bd;
+      border: 2px dashed #2b2b2b;   /* manga-style ink border */
       border-radius: 8px;
       overflow: auto;
       margin-bottom: 0;
@@ -213,7 +241,7 @@
       gap: 6px;
       padding: 6px 12px;
       background-color: #ece8e2;
-      border: 1px solid #d8d3cb;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 0 0 8px 8px;   /* rounded bottom — a hanging tab */
       cursor: pointer;
       font-size: 14px;
@@ -331,12 +359,13 @@
       gap: 4px;
       min-width: 120px;
       background-color: white;
-      border: 1px solid #c9c4bd;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 8px;
       /* extra room on the right for the "+" and at the bottom for the
          three-dot menu, both positioned in those corners */
       padding: 12px 30px 22px 14px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      /* Hard offset shadow — no blur — for a 'comic panel' drop look. */
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.18);
       cursor: grab;
       user-select: none;
       touch-action: none;
@@ -442,7 +471,7 @@
       box-sizing: border-box;
       padding: 6px;
       font-size: 15px;
-      border: 1px solid #c9c4bd;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 6px;
     }
 
@@ -476,9 +505,9 @@
       gap: 4px;
       padding: 6px;
       background-color: white;
-      border: 1px solid #c9c4bd;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.18);
     }
 
     /* The "hidden" class simply hides whatever it is put on. */
@@ -519,11 +548,11 @@
     }
     #confirm-card {
       background-color: #f4efe7;
-      border: 1px solid #d8d3cb;
+      border: 2px solid #2b2b2b;   /* manga-style ink border */
       border-radius: 10px;
       padding: 22px 24px 18px;
       max-width: 420px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.22);
     }
     #confirm-message {
       margin: 0 0 18px 0;

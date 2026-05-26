@@ -381,6 +381,14 @@
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
     }
 
+    /* While a box is being dragged or edited, float it above its
+       neighbours so nothing covers it. z-index orders elements along
+       the screen's "depth" axis — higher numbers sit on top. */
+    .character-box.dragging,
+    .character-box.editing {
+      z-index: 10;
+    }
+
     /* A character that is part of the temporary group selection. */
     .character-box.selected {
       outline: 2px solid #5b8a72;

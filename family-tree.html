@@ -509,11 +509,16 @@
       cursor: pointer;
     }
 
-    /* The little gender symbol that sits next to a character's name. */
+    /* The little gender symbol that sits next to a character's name.
+       Unicode glyphs don't always honour font-weight, so we add a tiny
+       text-stroke too — it draws a thin outline in the same colour,
+       which physically thickens the strokes of the glyph. */
     .gender-symbol {
       margin-left: 6px;
-      font-size: 18px;
+      font-size: 20px;
       color: #2b2b2b;
+      font-weight: bold;
+      -webkit-text-stroke: 0.6px currentColor;
     }
 
     /* The deceased marker (skull and crossbones) in the top-left corner
@@ -522,8 +527,10 @@
       position: absolute;
       top: 0px;
       left: 4px;
-      font-size: 20px;
+      font-size: 24px;
       color: #2b2b2b;
+      font-weight: bold;
+      -webkit-text-stroke: 0.8px currentColor;
       pointer-events: none;       /* clicks pass through to the box */
     }
 

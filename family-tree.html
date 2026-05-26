@@ -204,6 +204,15 @@
       background-color: #e3ded6;
     }
 
+    /* The "100%" zoom readout under the zoom-out button. */
+    #zoom-percent {
+      text-align: center;
+      font-size: 13px;
+      color: #2b2b2b;
+      padding: 2px 0;
+      user-select: none;
+    }
+
     /* The editable tree title, floating over the top-left of the canvas. */
     #tree-title {
       position: absolute;
@@ -713,6 +722,8 @@
           <line x1="5" y1="8" x2="11" y2="8" stroke="#2b2b2b" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </button>
+      <!-- Shows the current zoom as a percentage. JS keeps it in sync. -->
+      <div id="zoom-percent">100%</div>
     </div>
 
     <!-- An editable title for this family tree, shown over the canvas. -->
@@ -770,6 +781,7 @@
     const typeMenu   = document.getElementById("type-menu");
     const zoomInBtn  = document.getElementById("zoom-in");
     const zoomOutBtn = document.getElementById("zoom-out");
+    const zoomPercent = document.getElementById("zoom-percent");
     const treeTitleInput = document.getElementById("tree-title");
     const treeTabs = document.getElementById("tree-tabs");
 
@@ -1227,24 +1239,27 @@
       treeArea.scrollTop  += shiftY * zoom;
     }
 
-    // applyZoom: shows the canvas at the current zoom level.
+    // applyZoom: shows the canvas at the current zoom level and
+    // updates the percentage readout in the toolbar.
     function applyZoom() {
       // "transform: scale" makes everything on the canvas — boxes and
       // lines together — look bigger or smaller, without changing any of
       // the numbers we store. The corner stays anchored (see the CSS
       // "transform-origin"), so zoom grows from the top-left.
       canvas.style.transform = "scale(" + zoom + ")";
+      zoomPercent.textContent = Math.round(zoom * 100) + "%";
       resizeCanvas();
     }
 
     // zoomIn / zoomOut: step the zoom level up or down, within limits.
+    // 1.1 means each click changes the zoom by 10% (smaller, finer steps).
     function zoomIn() {
-      zoom = Math.min(zoom * 1.2, 2.5);   // never more than 2.5x
+      zoom = Math.min(zoom * 1.1, 2.5);   // never more than 2.5x
       saveZoom();
       applyZoom();
     }
     function zoomOut() {
-      zoom = Math.max(zoom / 1.2, 0.4);   // never less than 0.4x
+      zoom = Math.max(zoom / 1.1, 0.4);   // never less than 0.4x
       saveZoom();
       applyZoom();
     }

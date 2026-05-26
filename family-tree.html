@@ -461,6 +461,64 @@
       margin-top: 4px;
     }
 
+    /* When a box is in edit mode it widens and stretches form rows
+       to fill the box, so dropdowns and radios line up neatly. */
+    .character-box.editing {
+      align-items: stretch;
+      min-width: 220px;
+    }
+
+    /* A label-and-control row inside the edit form (e.g. "Gender: ..."). */
+    .edit-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      font-size: 14px;
+    }
+    .edit-gender {
+      flex: 1;
+      padding: 4px 6px;
+      border: 2px solid #2b2b2b;
+      border-radius: 6px;
+      background-color: white;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    /* The status row: a pair of "Alive / Deceased" radio choices. */
+    .edit-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      font-size: 14px;
+    }
+    .edit-status label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    /* The little gender symbol that sits next to a character's name. */
+    .gender-symbol {
+      margin-left: 6px;
+      font-size: 18px;
+      color: #2b2b2b;
+    }
+
+    /* The deceased marker (skull and crossbones) in the top-left corner
+       of a box. Positioned absolutely so it overlays the rounded corner. */
+    .deceased-marker {
+      position: absolute;
+      top: 0px;
+      left: 4px;
+      font-size: 20px;
+      color: #2b2b2b;
+      pointer-events: none;       /* clicks pass through to the box */
+    }
+
     /* The "Save" button shown while editing a name. */
     .save-button {
       padding: 5px 10px;
@@ -711,6 +769,17 @@
 
     // The web address ("namespace") that SVG shapes must be created with.
     const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+    // Maps a gender value to the Unicode symbol shown next to a name.
+    // An empty string means "show no symbol" — used for "nonbinary" and
+    // "unspecified" (the default).
+    const GENDER_SYMBOLS = {
+      male:        "♂",   // ♂
+      female:      "♀",   // ♀
+      trans:       "⚧",   // ⚧
+      nonbinary:   "",
+      unspecified: ""
+    };
 
     // The relationship types you can start from a box's "+" menu.
     // Note: characters who share parents are ALSO joined as siblings
@@ -1193,18 +1262,80 @@
         box.style.top  = character.y + "px";
 
         if (character.id === editingId) {
-          // Edit window: a name text box, plus a row holding the
-          // delete (x) button on the left and the Save button on the
-          // right. More fields (traits, notes) can be added here later
-          // between the input and the button row.
+          // Edit window: name input, gender dropdown, alive/deceased
+          // radio row, and a row with delete (x) and Save buttons.
+          box.classList.add("editing");
+
           const input = document.createElement("input");
           input.type = "text";
           input.className = "edit-input";
           input.value = character.name;
+
+          // ----- Gender dropdown -----
+          const genderSelect = document.createElement("select");
+          genderSelect.className = "edit-gender";
+          const genderOptions = [
+            { value: "unspecified", label: "—" },
+            { value: "male",        label: "Male" },
+            { value: "female",      label: "Female" },
+            { value: "trans",       label: "Trans" },
+            { value: "nonbinary",   label: "Nonbinary" }
+          ];
+          genderOptions.forEach(function (opt) {
+            const optionEl = document.createElement("option");
+            optionEl.value = opt.value;
+            optionEl.textContent = opt.label;
+            genderSelect.appendChild(optionEl);
+          });
+          // Existing characters from before traits won't have a gender —
+          // fall back to "unspecified" so the dropdown shows a value.
+          genderSelect.value = character.gender || "unspecified";
+
+          const genderLabel = document.createElement("label");
+          genderLabel.className = "edit-field";
+          genderLabel.appendChild(document.createTextNode("Gender:"));
+          genderLabel.appendChild(genderSelect);
+
+          // ----- Status radio row (alive / deceased) -----
+          const radioName = "status-" + character.id;
+          const currentStatus = character.status || "alive";
+
+          const aliveRadio = document.createElement("input");
+          aliveRadio.type = "radio";
+          aliveRadio.name = radioName;
+          aliveRadio.value = "alive";
+          aliveRadio.checked = (currentStatus === "alive");
+
+          const deadRadio = document.createElement("input");
+          deadRadio.type = "radio";
+          deadRadio.name = radioName;
+          deadRadio.value = "deceased";
+          deadRadio.checked = (currentStatus === "deceased");
+
+          const aliveLabel = document.createElement("label");
+          aliveLabel.appendChild(aliveRadio);
+          aliveLabel.appendChild(document.createTextNode(" Alive"));
+          const deadLabel = document.createElement("label");
+          deadLabel.appendChild(deadRadio);
+          deadLabel.appendChild(document.createTextNode(" Deceased"));
+
+          const statusRow = document.createElement("div");
+          statusRow.className = "edit-status";
+          statusRow.appendChild(aliveLabel);
+          statusRow.appendChild(deadLabel);
+
+          // A single save function reads all three fields at once.
+          function applyEdits() {
+            saveCharacterEdits(
+              character.id,
+              input.value,
+              genderSelect.value,
+              aliveRadio.checked ? "alive" : "deceased"
+            );
+          }
+
           input.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-              saveEditedName(character.id, input.value);
-            }
+            if (event.key === "Enter") { applyEdits(); }
           });
 
           const removeButton = document.createElement("button");
@@ -1224,7 +1355,7 @@
           saveButton.className = "save-button";
           saveButton.addEventListener("click", function (event) {
             event.stopPropagation();
-            saveEditedName(character.id, input.value);
+            applyEdits();
           });
 
           const buttonRow = document.createElement("div");
@@ -1233,14 +1364,26 @@
           buttonRow.appendChild(saveButton);
 
           box.appendChild(input);
+          box.appendChild(genderLabel);
+          box.appendChild(statusRow);
           box.appendChild(buttonRow);
         } else {
-          // Normal display: the name, with a "+" in the top-right
-          // corner (start a new relationship) and a three-dot "⋯"
-          // button in the bottom-right corner (open the edit window).
+          // Normal display: the name (with a gender symbol after it if
+          // one is set), a "+" in the top-right corner (start a new
+          // relationship), a "⋯" in the bottom-right (open the edit
+          // window), and a skull in the top-left if deceased.
           const nameText = document.createElement("div");
           nameText.className = "character-name";
           nameText.textContent = character.name;
+
+          // Append the gender symbol, if any, as a small inline span.
+          const symbol = GENDER_SYMBOLS[character.gender] || "";
+          if (symbol) {
+            const symbolEl = document.createElement("span");
+            symbolEl.className = "gender-symbol";
+            symbolEl.textContent = symbol;
+            nameText.appendChild(symbolEl);
+          }
 
           const connectHandle = document.createElement("button");
           connectHandle.textContent = "+";
@@ -1266,6 +1409,16 @@
           box.appendChild(connectHandle);
           box.appendChild(nameText);
           box.appendChild(menuButton);
+
+          // Deceased marker — a small skull-and-crossbones over the
+          // top-left corner. Only added when the status is "deceased".
+          if (character.status === "deceased") {
+            const skull = document.createElement("span");
+            skull.className = "deceased-marker";
+            skull.textContent = "☠";
+            skull.title = "Deceased";
+            box.appendChild(skull);
+          }
         }
 
         // While connecting, a click on a box finishes the connection.
@@ -1889,7 +2042,14 @@
       if (newName === "") { return; }
 
       const spot = nextStartingSpot();
-      characters.push({ id: makeId(), name: newName, x: spot.x, y: spot.y });
+      characters.push({
+        id: makeId(),
+        name: newName,
+        x: spot.x,
+        y: spot.y,
+        gender: "unspecified",   // new traits get sensible defaults
+        status: "alive"
+      });
 
       saveCharacters();
       renderCharacters();
@@ -1898,14 +2058,17 @@
       nameInput.focus();
     }
 
-    // saveEditedName: stores a new name for the character being edited.
-    function saveEditedName(id, newNameRaw) {
+    // saveCharacterEdits: stores everything the user changed in the
+    // edit window — name, gender, and status — back onto the character.
+    function saveCharacterEdits(id, newNameRaw, gender, status) {
       const newName = newNameRaw.trim();
-      if (newName === "") { return; }
+      if (newName === "") { return; }   // an empty name is not allowed
 
       const character = findCharacter(id);
       if (character) {
-        character.name = newName;
+        character.name   = newName;
+        character.gender = gender;
+        character.status = status;
       }
       editingId = null;
       saveCharacters();
